@@ -1,4 +1,3 @@
-const PUBLISHED_INSTALL_URL = "https://sinyuubuturyuu.github.io/sinyuubuturyuu-apps/sinyuubuturyuu/index.html";
 const QR_SIZE = 320;
 const QR_FILE_NAME = "sinyuubuturyuu-install-qr.png";
 
@@ -30,7 +29,7 @@ function bindEvents() {
 }
 
 function buildInstallUrl() {
-  return PUBLISHED_INSTALL_URL;
+  return new URL("./sinyuubuturyuu/index.html", window.location.href).toString();
 }
 
 function buildQrImageUrl(text) {
