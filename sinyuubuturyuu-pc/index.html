@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script>
     (function () {
-      const version = "20260324a";
+      const version = "20260322b";
       const url = new URL(window.location.href);
       if (url.searchParams.get("v") === version) return;
       url.searchParams.set("v", version);
@@ -16,9 +16,9 @@
   <meta name="description" content="月次タイヤ点検表と月次日常点検表の統合ランチャー">
   <link rel="icon" href="./icons/icon-sinyuubuturyuu-pc.png" type="image/png">
   <link rel="apple-touch-icon" href="./icons/icon-sinyuubuturyuu-pc.png">
-  <link rel="manifest" href="./manifest.webmanifest?v=20260324a">
+  <link rel="manifest" href="./manifest.webmanifest?v=20260322b">
   <meta name="theme-color" content="#ffffff">
-  <link rel="stylesheet" href="./shell.css?v=20260324a">
+  <link rel="stylesheet" href="./shell.css?v=20260322b">
 </head>
 <body class="shell-body">
   <main class="shell-page">
@@ -41,10 +41,10 @@
     </section>
   </main>
 
-  <script src="./launcher-window.js?v=20260324a"></script>
+  <script src="./launcher-window.js?v=20260322b"></script>
   <script>
     (function () {
-      const version = "20260324a";
+      const version = "20260322b";
       const tireInspectionButton = document.getElementById("tireInspectionButton");
       const dailyInspectionButton = document.getElementById("dailyInspectionButton");
       const driverPointsButton = document.getElementById("driverPointsButton");
@@ -69,7 +69,7 @@
         }
 
         window.addEventListener("load", function () {
-          navigator.serviceWorker.register("./sw.js?v=20260324a").catch(function (error) {
+          navigator.serviceWorker.register("./sw.js?v=20260322b").catch(function (error) {
             console.warn("Failed to register service worker:", error);
           });
         });
