@@ -1,9 +1,7 @@
 ﻿(function () {
   "use strict";
 
-  const runtime = window.SINYUUBUTURYUU_FIREBASE_RUNTIME || {};
-  const directoryDocIds = runtime.directoryDocIds || {};
-  const DEFAULT_COLLECTION = (runtime.collections && runtime.collections.tireInspection) || "tiretenkenhyou";
+  const DEFAULT_COLLECTION = "getujitiretenkenhyou";
   const TIRE_FIELDS = ["maker", "type", "groove", "wear", "damage", "pressure"];
   const KNOWN_TRUCK_TYPES = ["low12", "ten10"];
   const TIRE_OPTION_ORDER = {
@@ -26,10 +24,10 @@
   };
   const DRIVER_SETTINGS_DOC_IDS = [
     "monthly_tire_company_settings_backup_dribers_slot1",
-    directoryDocIds.drivers || "monthly_tire_company_settings_backup_drivers_slot1"
+    "monthly_tire_company_settings_backup_drivers_slot1"
   ];
   const VEHICLE_SETTINGS_DOC_IDS = [
-    directoryDocIds.vehicles || "monthly_tire_company_settings_backup_vehicles_slot1"
+    "monthly_tire_company_settings_backup_vehicles_slot1"
   ];
   const SETTINGS_DOC_IDS = [...new Set([
     ...DRIVER_SETTINGS_DOC_IDS,
@@ -550,11 +548,14 @@
     });
 
     const driverNames = sortDriverOptions(dedupeDriverOptions(driverEntryMap.keys()), driverEntryMap);
+    const localSharedOptions = getLocalSharedMasterOptions();
 
     return {
-      vehicleNumber: sortOptions(vehicleSet),
-      driverName: driverNames,
-      driverReadingMap: driverEntryMap
+      vehicleNumber: mergePreferredOptions(localSharedOptions.vehicleNumber, sortOptions(vehicleSet)),
+      driverName: sortDriverOptions(
+        dedupeDriverOptions(mergePreferredOptions(localSharedOptions.driverName, driverNames)),
+        mergeDriverReadingMaps(localSharedOptions.driverReadingMap, driverEntryMap)
+      )
     };
   }
 
@@ -763,21 +764,14 @@
       });
     });
 
-    const mergedDriverReadingMap = mergeDriverReadingMaps(
-      masterFieldOptions ? masterFieldOptions.driverReadingMap : null,
-      driverReadingMap
-    );
     const rowVehicleOptions = sortOptions(optionSets.vehicleNumber);
-    const rowDriverOptions = sortDriverOptions(optionSets.driverName, mergedDriverReadingMap);
+    const rowDriverOptions = sortDriverOptions(optionSets.driverName, driverReadingMap);
     const masterVehicles = masterFieldOptions ? masterFieldOptions.vehicleNumber : [];
     const masterDrivers = masterFieldOptions ? masterFieldOptions.driverName : [];
 
     return {
       vehicleNumber: mergePreferredOptions(masterVehicles, rowVehicleOptions),
-      driverName: sortDriverOptions(
-        dedupeDriverOptions(mergePreferredOptions(masterDrivers, rowDriverOptions)),
-        mergedDriverReadingMap
-      ),
+      driverName: sortDriverOptions(dedupeDriverOptions(mergePreferredOptions(masterDrivers, rowDriverOptions)), driverReadingMap),
       truckType: sortOptions(optionSets.truckType),
       spare: {
         maker: [...SPARE_OPTION_ORDER.maker],
@@ -2082,7 +2076,7 @@
 
   async function initFirebase() {
     if (!window.firebase || !window.APP_FIREBASE_CONFIG) {
-      throw new Error("Firebase設定の読み込みに失敗しました。../firebase-config.js を確認してください。");
+      throw new Error("Firebase設定の読み込みに失敗しました。firebase/firebase-config.js を確認してください。");
     }
 
     const syncOptions = window.APP_FIREBASE_SYNC_OPTIONS || {};
@@ -2132,21 +2126,13 @@
       await initFirebase();
     }
 
-    const snap = await state.db
-      .collection(state.collection)
-      .orderBy("updatedAt", "desc")
-      .get();
-
-    let settingsDocSnaps = [];
-    let masterFieldOptions = null;
-    try {
-      settingsDocSnaps = await loadSettingsDocsFromFirestore();
-      masterFieldOptions = collectMasterFieldOptions(settingsDocSnaps);
-    } catch (error) {
-      console.warn("Failed to load shared master options from Firebase:", error);
-      masterFieldOptions = getLocalSharedMasterOptions();
-      setError("車番・社員名候補の Firebase 読込に失敗したため、この端末の保存候補を表示しています。");
-    }
+    const [snap, settingsDocSnaps] = await Promise.all([
+      state.db
+        .collection(state.collection)
+        .orderBy("updatedAt", "desc")
+        .get(),
+      loadSettingsDocsFromFirestore()
+    ]);
 
     const driverReadingMap = collectDriverReadingMap([...snap.docs, ...settingsDocSnaps]);
     const inspectionDocs = snap.docs.filter((docSnap) => !isSettingsBackupDocId(docSnap.id));
@@ -2167,7 +2153,7 @@
     }
 
     state.rows = extractedRows;
-    state.fieldOptions = collectFieldOptions(state.rows, masterFieldOptions, driverReadingMap);
+    state.fieldOptions = collectFieldOptions(state.rows, collectMasterFieldOptions(settingsDocSnaps), driverReadingMap);
     refreshDateFilterSelectOptions();
     refreshFilterSelectOptions();
     state.expandedDocIds.clear();
