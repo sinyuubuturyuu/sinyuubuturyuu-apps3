@@ -12,9 +12,8 @@ npm start
 
 ## GitHub Pagesで開く
 - ルートの `index.html` から `src/index.html` へ遷移します。
-- 点検データ本体の保存先は Firestore の `nichijyoutenkenhyou` コレクションです。
-- 車番・社員名候補は Firestore の `syainmei` コレクションを正本として読み込みます。
-- Firebase の候補読込に失敗した場合のみ、この端末の `localStorage` 候補へ一時的に fallback します。
+- Pagesでは `server/server.js` が動かないため、保存先はブラウザの `localStorage` になります。
+- 同じブラウザ・同じ端末でのみ保存データを再読込できます。
 
 ## 実装済み
 - 点検セルクリックで `レ -> ☓ -> ▲ -> 空欄`
