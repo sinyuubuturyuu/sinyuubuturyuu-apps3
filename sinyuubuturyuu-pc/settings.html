@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script>
     (function () {
-      const version = "20260322b";
+      const version = "20260324a";
       const url = new URL(window.location.href);
       if (url.searchParams.get("v") === version) return;
       url.searchParams.set("v", version);
@@ -97,17 +97,17 @@
       }
 
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("./sw.js?v=20260322b").catch(function (error) {
+        navigator.serviceWorker.register("./sw.js?v=20260324a").catch(function (error) {
           console.warn("Failed to register service worker:", error);
         });
       });
     })();
   </script>
-  <script src="./shared-settings.js?v=20260322b"></script>
-  <script src="./getujityretenkenhyou-pc/firebase/firebase-config.js?v=20260322b"></script>
+  <script src="./shared-settings.js?v=20260324a"></script>
+  <script src="./firebase-config.js?v=20260324a"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./settings.js?v=20260322b"></script>
+  <script src="./settings.js?v=20260324a"></script>
 </body>
 </html>
