@@ -45,8 +45,9 @@ const EXCEL_STAMP_IMAGE_SIZES = {
   small: { width: 22, height: 22 }
 };
 let jsZipModulePromise = null;
-
-const firebaseConfig = {
+const runtime = window.SINYUUBUTURYUU_FIREBASE_RUNTIME || {};
+const directoryDocIds = runtime.directoryDocIds || {};
+const firebaseConfig = runtime.primaryConfig || {
   apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
   authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
   projectId: "sinyuubuturyuu-86aeb",
@@ -56,24 +57,16 @@ const firebaseConfig = {
   measurementId: "G-F9VYGCTHEV"
 };
 
-const referenceFirebaseConfig = {
-  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
-  authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
-  projectId: "sinyuubuturyuu-86aeb",
-  storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
-  messagingSenderId: "213947378677",
-  appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
-  measurementId: "G-F9VYGCTHEV"
-};
+const referenceFirebaseConfig = runtime.directoryConfig || firebaseConfig;
 
-const FIRESTORE_COLLECTION = "getujinitijyoutenkenhyou";
+const FIRESTORE_COLLECTION = (runtime.collections && runtime.collections.dailyInspection) || "nichijyoutenkenhyou";
 const VEHICLE_SETTINGS_DOC = {
-  collection: "syainmeibo",
-  id: "monthly_tire_company_settings_backup_vehicles_slot1"
+  collection: (runtime.collections && runtime.collections.directory) || "syainmei",
+  id: directoryDocIds.vehicles || "monthly_tire_company_settings_backup_vehicles_slot1"
 };
 const DRIVER_SETTINGS_DOC = {
-  collection: "syainmeibo",
-  id: "monthly_tire_company_settings_backup_drivers_slot1"
+  collection: (runtime.collections && runtime.collections.directory) || "syainmei",
+  id: directoryDocIds.drivers || "monthly_tire_company_settings_backup_drivers_slot1"
 };
 const sharedSettings = window.SharedAppSettings || null;
 const CHECK_FIELD_ORDER = [
@@ -189,7 +182,10 @@ function getReiwaYear(year) {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const referenceApp = initializeApp(referenceFirebaseConfig, "reference-app");
+const referenceApp = initializeApp(
+  referenceFirebaseConfig,
+  (runtime.appNames && runtime.appNames.dailyReference) || "reference-app"
+);
 const referenceDb = getFirestore(referenceApp);
 const referenceAuth = getAuth(referenceApp);
 
@@ -612,19 +608,14 @@ async function loadReferenceOptions() {
 
     const vehicleDocExists = vehicleSnapshot.exists();
     const driverDocExists = driverSnapshot.exists();
-    const vehicles = mergeUniqueOptions(
-      localOptions.vehicles,
-      vehicleDocExists ? getStringArray(vehicleSnapshot.data()).map((value) => normalizeVehicleValue(value)) : []
-    );
-    const rawDrivers = mergeUniqueOptions(
-      localOptions.rawDrivers,
-      driverDocExists ? getStringArray(driverSnapshot.data()) : []
-    );
+    const vehicles = vehicleDocExists
+      ? getStringArray(vehicleSnapshot.data()).map((value) => normalizeVehicleValue(value))
+      : [];
+    const rawDrivers = driverDocExists
+      ? getStringArray(driverSnapshot.data())
+      : [];
     rawDrivers.forEach((value) => rememberDriverStorageValue(value));
-    const drivers = mergeUniqueDriverOptions(
-      localDrivers,
-      rawDrivers
-    );
+    const drivers = mergeUniqueDriverOptions(rawDrivers);
 
     state.vehicleOptions = sortOptions(vehicles);
     state.driverOptions = sortDriverOptions(drivers);
@@ -636,7 +627,7 @@ async function loadReferenceOptions() {
     driverEl.disabled = false;
     syncHeaderInfo();
 
-    if ((!vehicleDocExists || !driverDocExists) && !localOptions.vehicles.length && !localOptions.rawDrivers.length) {
+    if (!vehicleDocExists && !driverDocExists) {
       setStatus(
         `候補設定ドキュメント未検出: project=${referenceFirebaseConfig.projectId} vehicle=${buildReferenceDocPath(VEHICLE_SETTINGS_DOC)} exists=${vehicleDocExists} driver=${buildReferenceDocPath(DRIVER_SETTINGS_DOC)} exists=${driverDocExists}`,
         true
