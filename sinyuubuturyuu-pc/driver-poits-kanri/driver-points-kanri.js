@@ -1,6 +1,7 @@
 (function () {
   "use strict";
 
+  const runtime = window.SINYUUBUTURYUU_FIREBASE_RUNTIME || {};
   const sharedSettings = window.SharedAppSettings || null;
   const referenceConfig = window.APP_FIREBASE_DIRECTORY_CONFIG || window.APP_FIREBASE_CONFIG || null;
   const referenceSyncOptions = window.APP_FIREBASE_DIRECTORY_SYNC_OPTIONS || window.APP_FIREBASE_SYNC_OPTIONS || {};
@@ -9,14 +10,15 @@
   const SERVER_GET_OPTIONS = Object.freeze({
     source: "server"
   });
+  const directoryDocIds = runtime.directoryDocIds || {};
   const optionsDocRefs = Object.freeze({
     vehicles: {
-      collection: referenceSyncOptions.collection || "syainmeibo",
-      id: "monthly_tire_company_settings_backup_vehicles_slot1"
+      collection: referenceSyncOptions.collection || (runtime.collections && runtime.collections.directory) || "syainmei",
+      id: directoryDocIds.vehicles || "monthly_tire_company_settings_backup_vehicles_slot1"
     },
     drivers: {
-      collection: referenceSyncOptions.collection || "syainmeibo",
-      id: "monthly_tire_company_settings_backup_drivers_slot1"
+      collection: referenceSyncOptions.collection || (runtime.collections && runtime.collections.directory) || "syainmei",
+      id: directoryDocIds.drivers || "monthly_tire_company_settings_backup_drivers_slot1"
     }
   });
 
@@ -120,24 +122,28 @@
 
   async function loadSelectableOptions() {
     const localOptions = getLocalOptions();
+    let cloudLoadError = null;
     let cloudVehicles = [];
     let cloudDrivers = [];
 
-    if (referenceConfig && window.firebase) {
-      try {
-        const referenceDb = await ensureDb(referenceConfig, {
-          useAnonymousAuth: referenceSyncOptions.useAnonymousAuth !== false
-        }, "shared-settings-reference");
-        const snapshots = await Promise.all([
-          referenceDb.collection(optionsDocRefs.vehicles.collection).doc(optionsDocRefs.vehicles.id).get(),
-          referenceDb.collection(optionsDocRefs.drivers.collection).doc(optionsDocRefs.drivers.id).get()
-        ]);
-
-        cloudVehicles = getStringArray(snapshots[0].exists ? snapshots[0].data() : null);
-        cloudDrivers = getStringArray(snapshots[1].exists ? snapshots[1].data() : null);
-      } catch (error) {
-        console.warn("Failed to load shared options from Firebase:", error);
+    try {
+      if (!referenceConfig || !window.firebase) {
+        throw new Error("shared_settings_config_missing");
       }
+
+      const referenceDb = await ensureDb(referenceConfig, {
+        useAnonymousAuth: referenceSyncOptions.useAnonymousAuth !== false
+      }, (runtime.appNames && runtime.appNames.sharedSettingsReference) || "shared-settings-reference");
+      const snapshots = await Promise.all([
+        referenceDb.collection(optionsDocRefs.vehicles.collection).doc(optionsDocRefs.vehicles.id).get(),
+        referenceDb.collection(optionsDocRefs.drivers.collection).doc(optionsDocRefs.drivers.id).get()
+      ]);
+
+      cloudVehicles = getStringArray(snapshots[0].exists ? snapshots[0].data() : null);
+      cloudDrivers = getStringArray(snapshots[1].exists ? snapshots[1].data() : null);
+    } catch (error) {
+      cloudLoadError = error;
+      console.warn("Failed to load shared options from Firebase:", error);
     }
 
     state.vehicleOptions = buildVehicleOptions(localOptions.vehicles, cloudVehicles);

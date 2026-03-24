@@ -2,17 +2,19 @@
   "use strict";
 
   const sharedSettings = window.SharedAppSettings;
+  const runtime = window.SINYUUBUTURYUU_FIREBASE_RUNTIME || {};
+  const directoryDocIds = runtime.directoryDocIds || {};
   const VEHICLE_BACKUP = Object.freeze({
     kind: "vehicles",
-    docId: "monthly_tire_company_settings_backup_vehicles_slot1",
+    docId: directoryDocIds.vehicles || "monthly_tire_company_settings_backup_vehicles_slot1",
     label: "車両番号"
   });
   const DRIVER_BACKUP = Object.freeze({
     kind: "drivers",
-    docId: "monthly_tire_company_settings_backup_drivers_slot1",
+    docId: directoryDocIds.drivers || "monthly_tire_company_settings_backup_drivers_slot1",
     label: "運転者名"
   });
-  const DEFAULT_COLLECTION = "syainmeibo";
+  const DEFAULT_COLLECTION = (runtime.collections && runtime.collections.directory) || "syainmei";
   const BACKUP_VALUE_FIELDS = Object.freeze({
     vehicles: Object.freeze([
       "values",
