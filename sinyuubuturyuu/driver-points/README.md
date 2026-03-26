@@ -9,4 +9,4 @@
 
 - `/index.html`
 - `/getujinitijyoutenkenhyou/index.html`
-- `/getjityretenkenhyou/index.html`
+- `/getujitiretenkenhyou/index.html`

@@ -1,5 +1,5 @@
 {
-  "name": "getjityretenkenhyou",
+  "name": "getujitiretenkenhyou",
   "private": true,
   "scripts": {
     "gen:icons": "node scripts/generate-icons.mjs"

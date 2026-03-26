@@ -1,11 +1,11 @@
 const APP_CONFIG = {
   app1Name: "月次タイヤ点検表",
-  app1Path: "./getjityretenkenhyou/index.html",
+  app1Path: "./getujitiretenkenhyou/index.html",
   app2Name: "月次日常点検表",
   app2Path: "./getujinitijyoutenkenhyou/index.html",
 };
 
-const MONTHLY_COMPLETE_IMAGE_SRC = "./getjityretenkenhyou/icons/monthly-complete.png";
+const MONTHLY_COMPLETE_IMAGE_SRC = "./getujitiretenkenhyou/icons/monthly-complete.png";
 const REFERENCE_FIREBASE_CONFIG = Object.freeze(window.APP_FIREBASE_DIRECTORY_CONFIG || {
   apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
   authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
