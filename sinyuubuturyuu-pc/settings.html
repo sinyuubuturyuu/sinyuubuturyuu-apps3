@@ -97,7 +97,11 @@
       }
 
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("./sw.js?v=20260322b").catch(function (error) {
+        navigator.serviceWorker.register("./sw.js?v=20260322b", {
+          updateViaCache: "none"
+        }).then(function (registration) {
+          return registration.update();
+        }).catch(function (error) {
           console.warn("Failed to register service worker:", error);
         });
       });

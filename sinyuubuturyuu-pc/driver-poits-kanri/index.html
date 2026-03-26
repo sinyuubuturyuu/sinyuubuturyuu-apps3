@@ -19,7 +19,7 @@
   <link rel="manifest" href="../manifest.webmanifest?v=20260322b">
   <meta name="theme-color" content="#ffffff">
   <link rel="stylesheet" href="../shell.css?v=20260322b">
-  <link rel="stylesheet" href="./driver-points-kanri.css">
+  <link rel="stylesheet" href="./driver-points-kanri.css?v=20260322b">
 </head>
 <body class="shell-body">
   <main class="shell-page">
@@ -104,7 +104,11 @@
       }
 
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("../sw.js?v=20260322b").catch(function (error) {
+        navigator.serviceWorker.register("../sw.js?v=20260322b", {
+          updateViaCache: "none"
+        }).then(function (registration) {
+          return registration.update();
+        }).catch(function (error) {
           console.warn("Failed to register service worker:", error);
         });
       });

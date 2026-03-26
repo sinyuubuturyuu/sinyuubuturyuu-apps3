@@ -993,14 +993,18 @@ function buildHankoSvgMarkup(name, size = "small") {
   }
 
   const { width, height } = EXCEL_STAMP_IMAGE_SIZES[size] || EXCEL_STAMP_IMAGE_SIZES.small;
-  const fontSize = size === "large" ? 22 : 14;
-  const strokeWidth = size === "large" ? 4 : 3;
-  const inset = strokeWidth;
+  const charCount = Array.from(trimmedName).length;
+  const fontSize = size === "large"
+    ? Math.max(17, 20 - Math.max(0, charCount - 2) * 2)
+    : Math.max(11, 13 - Math.max(0, charCount - 2));
+  const strokeWidth = size === "large" ? 2.5 : 2;
+  const inset = strokeWidth + (size === "large" ? 2.5 : 1.5);
+  const letterSpacing = size === "large" ? 0.5 : 0;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <circle cx="${width / 2}" cy="${height / 2}" r="${(Math.min(width, height) / 2) - inset}" fill="rgba(255,255,255,0.18)" stroke="#c61717" stroke-width="${strokeWidth}" />
-  <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" fill="#c61717" font-size="${fontSize}" font-weight="700" font-family="'Yu Gothic', 'Hiragino Kaku Gothic ProN', sans-serif" letter-spacing="1">${escapeXmlText(trimmedName)}</text>
+  <text x="50%" y="53%" text-anchor="middle" dominant-baseline="middle" fill="#c61717" font-size="${fontSize}" font-weight="700" font-family="'Yu Gothic', 'Hiragino Kaku Gothic ProN', sans-serif" letter-spacing="${letterSpacing}">${escapeXmlText(trimmedName)}</text>
 </svg>`;
 }
 

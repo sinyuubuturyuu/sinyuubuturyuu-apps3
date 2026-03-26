@@ -1,7 +1,8 @@
 const APP_VERSION = "20260322b";
+const VERSION_PARAM = "v";
 
-self.addEventListener("install", function () {
-  self.skipWaiting();
+self.addEventListener("install", function (event) {
+  event.waitUntil(Promise.resolve(self.skipWaiting()));
 });
 
 self.addEventListener("activate", function (event) {
@@ -14,15 +15,8 @@ self.addEventListener("activate", function (event) {
 
     await Promise.all(windowClients.map(async function (client) {
       try {
-        const currentUrl = client.url || "";
-        const url = new URL(currentUrl);
-        if (!url.href.startsWith(self.registration.scope)) {
-          return;
-        }
-
-        url.searchParams.set("v", APP_VERSION);
-        const nextUrl = url.toString();
-        if (currentUrl === nextUrl) {
+        const nextUrl = getVersionedClientUrl(client.url || "");
+        if (!nextUrl || client.url === nextUrl) {
           return;
         }
         if (typeof client.navigate !== "function") {
@@ -38,3 +32,18 @@ self.addEventListener("activate", function (event) {
     }));
   })());
 });
+
+function getVersionedClientUrl(currentUrl) {
+  if (!currentUrl) {
+    return "";
+  }
+
+  const url = new URL(currentUrl);
+  if (!url.href.startsWith(self.registration.scope)) {
+    return "";
+  }
+
+  // This worker intentionally avoids CacheStorage and only nudges open pages to the latest release URL.
+  url.searchParams.set(VERSION_PARAM, APP_VERSION);
+  return url.toString();
+}
