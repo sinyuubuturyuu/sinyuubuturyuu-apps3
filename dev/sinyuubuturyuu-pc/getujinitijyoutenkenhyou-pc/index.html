@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>Redirecting...</title>
+  <script>
+    (function () {
+      const version = "20260322b";
+      const targetUrl = new URL("./src/index.html", window.location.href);
+      targetUrl.search = window.location.search;
+      targetUrl.searchParams.set("v", version);
+      targetUrl.hash = window.location.hash;
+      window.location.replace(targetUrl.toString());
+    })();
+  </script>
+</head>
+<body>
+  <p><a id="openAppLink" href="./src/index.html">アプリを開く</a></p>
+  <script>
+    (function () {
+      const version = "20260322b";
+      const fallbackLink = document.getElementById("openAppLink");
+      if (!fallbackLink) {
+        return;
+      }
+
+      const targetUrl = new URL(fallbackLink.getAttribute("href"), window.location.href);
+      targetUrl.search = window.location.search;
+      targetUrl.searchParams.set("v", version);
+      targetUrl.hash = window.location.hash;
+      fallbackLink.href = targetUrl.toString();
+    })();
+  </script>
+</body>
+</html>

@@ -47,23 +47,21 @@ const EXCEL_STAMP_IMAGE_SIZES = {
 let jsZipModulePromise = null;
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
-  authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
-  projectId: "sinyuubuturyuu-86aeb",
-  storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
-  messagingSenderId: "213947378677",
-  appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
-  measurementId: "G-F9VYGCTHEV"
+  apiKey: "AIzaSyDdLIx-gZNn3i9LrT3XY6dyyhFXQ8Ogw6A",
+  authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
+  projectId: "sinyuubuturyuu-dev",
+  storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
+  messagingSenderId: "997788842966",
+  appId: "1:997788842966:web:e011e7340e2af863c40277"
 };
 
 const referenceFirebaseConfig = {
-  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
-  authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
-  projectId: "sinyuubuturyuu-86aeb",
-  storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
-  messagingSenderId: "213947378677",
-  appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
-  measurementId: "G-F9VYGCTHEV"
+  apiKey: "AIzaSyDdLIx-gZNn3i9LrT3XY6dyyhFXQ8Ogw6A",
+  authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
+  projectId: "sinyuubuturyuu-dev",
+  storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
+  messagingSenderId: "997788842966",
+  appId: "1:997788842966:web:e011e7340e2af863c40277"
 };
 
 const FIRESTORE_COLLECTION = "getujinitijyoutenkenhyou";

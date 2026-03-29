@@ -1,13 +1,13 @@
-{
+﻿{
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Open Test Launcher",
+      "name": "Admin App (localhost:8080)",
       "type": "pwa-chrome",
       "request": "launch",
-      "url": "http://127.0.0.1:8080",
+      "url": "http://localhost:8080/admin.html",
       "webRoot": "${workspaceFolder}",
-      "preLaunchTask": "Start Test Launcher"
+      "preLaunchTask": "ensure-admin-8080"
     }
   ]
 }
