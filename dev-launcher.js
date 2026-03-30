@@ -53,12 +53,6 @@ function bindEvents() {
     });
   }
 
-  if (elements.devModeLink) {
-    elements.devModeLink.addEventListener("click", async (event) => {
-      event.preventDefault();
-      await openDevMode();
-    });
-  }
 }
 
 async function openDevMode() {
