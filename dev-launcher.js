@@ -2,6 +2,7 @@
 const GITHUB_PAGES_BASE_URL = "https://sinyuubuturyuu.github.io/sinyuubuturyuu-apps3";
 const PROD_INSTALL_PATH = "/sinyuubuturyuu/index.html";
 const DEV_INSTALL_PATH = "/dev/sinyuubuturyuu/index.html";
+const DEV_LAUNCHER_STORAGE_KEY = "sinyuubuturyuu_dev_launcher_base_url";
 let installBaseUrlPromise = null;
 
 const elements = {
@@ -21,7 +22,7 @@ function initialize() {
   bindEvents();
   void refreshQrImage({ announce: false }).catch((error) => {
     console.warn("Failed to initialize QR image:", error);
-    setStatus("QRコードの読み込みに失敗しました。");
+    setStatus("\u0051\u0052\u30b3\u30fc\u30c9\u306e\u8aad\u307f\u8fbc\u307f\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002");
   });
 }
 
@@ -55,14 +56,91 @@ function bindEvents() {
   if (elements.devModeLink) {
     elements.devModeLink.addEventListener("click", async (event) => {
       event.preventDefault();
-      const canOpen = await canOpenDevMode();
-      if (!canOpen) {
-        window.alert("DEVモードは開発環境のパソコンと同じWi-Fiでのみ使えます。今のネットワーク環境では開けません。");
-        return;
-      }
-
-      window.location.assign(elements.devModeLink.href);
+      await openDevMode();
     });
+  }
+}
+
+async function openDevMode() {
+  if (canOpenLocalDevDirectly()) {
+    window.location.assign(buildDevPageUrl(window.location.origin));
+    return;
+  }
+
+  const savedBaseUrl = loadSavedDevLauncherBaseUrl();
+  const input = window.prompt(
+    "\u958b\u767a\u74b0\u5883URL\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u4f8b: http://192.168.3.22:8080",
+    savedBaseUrl || ""
+  );
+
+  if (input === null) {
+    return;
+  }
+
+  const normalizedBaseUrl = normalizeDevLauncherBaseUrl(input);
+  if (!normalizedBaseUrl) {
+    window.alert("\u958b\u767a\u74b0\u5883URL\u304c\u4e0d\u6b63\u3067\u3059\u3002\u4f8b: http://192.168.3.22:8080");
+    return;
+  }
+
+  saveDevLauncherBaseUrl(normalizedBaseUrl);
+  window.location.assign(buildDevPageUrl(normalizedBaseUrl));
+}
+
+function canOpenLocalDevDirectly() {
+  return window.location.protocol === "http:" && isLocalDevHost(window.location.hostname);
+}
+
+function isLocalDevHost(hostname) {
+  return hostname === "127.0.0.1"
+    || hostname === "localhost"
+    || /^192\.168\./.test(hostname)
+    || /^10\./.test(hostname)
+    || /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+}
+
+function normalizeDevLauncherBaseUrl(input) {
+  const trimmed = String(input || "").trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+
+    url.pathname = "/";
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch (error) {
+    console.warn("Invalid DEV launcher base URL:", error);
+    return null;
+  }
+}
+
+function buildDevPageUrl(baseUrl) {
+  return new URL(DEV_INSTALL_PATH, `${baseUrl}/`).toString();
+}
+
+function loadSavedDevLauncherBaseUrl() {
+  try {
+    return window.localStorage.getItem(DEV_LAUNCHER_STORAGE_KEY) || "";
+  } catch (error) {
+    console.warn("Failed to read DEV launcher base URL:", error);
+    return "";
+  }
+}
+
+function saveDevLauncherBaseUrl(baseUrl) {
+  try {
+    window.localStorage.setItem(DEV_LAUNCHER_STORAGE_KEY, baseUrl);
+  } catch (error) {
+    console.warn("Failed to save DEV launcher base URL:", error);
   }
 }
 
@@ -102,16 +180,6 @@ async function resolveInstallBaseUrl() {
   return GITHUB_PAGES_BASE_URL;
 }
 
-async function canOpenDevMode() {
-  try {
-    const response = await fetch("/__dev/meta", { cache: "no-store" });
-    return response.ok;
-  } catch (error) {
-    console.warn("DEV mode availability check failed:", error);
-    return false;
-  }
-}
-
 function isLocalLauncher() {
   return window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
 }
@@ -126,7 +194,7 @@ function buildQrImageUrl(text, cacheKey = Date.now()) {
 }
 
 function getEnvironmentLabel() {
-  return isDevMode() ? "DEV" : "本番";
+  return isDevMode() ? "DEV" : "\u672c\u756a";
 }
 
 function getQrFileName() {
@@ -149,7 +217,7 @@ async function refreshQrImage({ announce, resetBaseUrl = false }) {
   }
 
   if (announce) {
-    setStatus(`${getEnvironmentLabel()}用の最新QRコードを作成しました。`);
+    setStatus(`${getEnvironmentLabel()}\u7528\u306e\u6700\u65b0\u0051\u0052\u30b3\u30fc\u30c9\u3092\u4f5c\u6210\u3057\u307e\u3057\u305f\u3002`);
   }
 }
 
@@ -170,11 +238,11 @@ async function saveQrImage() {
       const writable = await fileHandle.createWritable();
       await writable.write(qrBlob);
       await writable.close();
-      setStatus(`選択したフォルダに保存しました : ${getQrFileName()}`);
+      setStatus(`\u9078\u629e\u3057\u305f\u30d5\u30a9\u30eb\u30c0\u306b\u4fdd\u5b58\u3057\u307e\u3057\u305f : ${getQrFileName()}`);
       return;
     } catch (error) {
       if (error && error.name === "AbortError") {
-        setStatus("フォルダ選択をキャンセルしました。");
+        setStatus("\u30d5\u30a9\u30eb\u30c0\u9078\u629e\u3092\u30ad\u30e3\u30f3\u30bb\u30eb\u3057\u307e\u3057\u305f\u3002");
         return;
       }
       console.warn("Directory picker save failed, falling back to normal download:", error);
@@ -189,7 +257,7 @@ async function saveQrImage() {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-  setStatus("このブラウザは保存先フォルダ指定に未対応のため、通常ダウンロードに切り替えました。");
+  setStatus("\u3053\u306e\u30d6\u30e9\u30a6\u30b6\u306f\u4fdd\u5b58\u5148\u30d5\u30a9\u30eb\u30c0\u6307\u5b9a\u306b\u672a\u5bfe\u5fdc\u306e\u305f\u3081\u3001\u901a\u5e38\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u306b\u5207\u308a\u66ff\u3048\u307e\u3057\u305f\u3002");
 }
 
 async function handleSelectedNoticeFile(input) {
@@ -208,7 +276,7 @@ async function handleSelectedNoticeFile(input) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-  setStatus(`お知らせファイルをダウンロードしました : ${file.name}`);
+  setStatus(`\u304a\u77e5\u3089\u305b\u30d5\u30a1\u30a4\u30eb\u3092\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u3057\u307e\u3057\u305f : ${file.name}`);
 }
 
 async function loadImage(url) {
@@ -226,7 +294,7 @@ async function withLauncherButtonsLock(task) {
     await task();
   } catch (error) {
     console.warn("Launcher action failed:", error);
-    setStatus("処理に失敗しました。");
+    setStatus("\u51e6\u7406\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002");
   } finally {
     setLauncherButtonsDisabled(false);
   }
