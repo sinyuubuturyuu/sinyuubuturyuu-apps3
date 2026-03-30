@@ -701,20 +701,24 @@ function removeTruckType(value) {
 }
 
 async function initializeCloudSync() {
-  if (!window.FirebaseCloudSync || typeof window.FirebaseCloudSync.init !== "function") {
-    return;
+  if (window.FirebaseCloudSync && typeof window.FirebaseCloudSync.init === "function") {
+    try {
+      await window.FirebaseCloudSync.init({
+        getPayload: buildCloudPayload,
+      });
+      state.cloudReady = typeof window.FirebaseCloudSync.isEnabled === "function"
+        ? window.FirebaseCloudSync.isEnabled()
+        : true;
+    } catch (error) {
+      console.warn("Failed to initialize Firebase cloud sync:", error);
+      state.cloudReady = false;
+    }
   }
 
   try {
-    await window.FirebaseCloudSync.init({
-      getPayload: buildCloudPayload,
-    });
-    state.cloudReady = typeof window.FirebaseCloudSync.isEnabled === "function"
-      ? window.FirebaseCloudSync.isEnabled()
-      : true;
+    await refreshReferenceOptions();
   } catch (error) {
-    console.warn("Failed to initialize Firebase cloud sync:", error);
-    state.cloudReady = false;
+    console.warn("Failed to preload reference options:", error);
   }
 
   renderAll();
