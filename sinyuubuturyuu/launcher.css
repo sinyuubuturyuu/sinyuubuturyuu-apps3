@@ -79,19 +79,6 @@ body {
   line-height: 1.2;
 }
 
-.install-callout {
-  display: grid;
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.install-guide {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.92rem;
-  line-height: 1.7;
-}
-
 .button-group {
   display: grid;
   gap: 14px;
