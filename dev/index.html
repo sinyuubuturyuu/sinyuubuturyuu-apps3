@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>シンユウ物流 テストランチャー</title>
+  <meta name="description" content="sinyuubuturyuu と sinyuubuturyuu-pc のテスト用ランチャーです。">
+  <link rel="stylesheet" href="../dev-launcher.css">
+</head>
+<body>
+  <main class="page">
+    <section class="hero card">
+      <h1>シンユウ物流アプリ テスト</h1>
+      <div class="launch-grid" aria-label="アプリ">
+        <article class="app-card">
+          <p class="app-kind">Mobile</p>
+          <h2>sinyuubuturyuu</h2>
+          <div class="button-row">
+            <a class="button primary" href="./sinyuubuturyuu/index.html" target="_blank" rel="noreferrer">開く</a>
+          </div>
+        </article>
+        <article class="app-card">
+          <p class="app-kind">PC</p>
+          <h2>sinyuubuturyuu-pc</h2>
+          <div class="button-row">
+            <a class="button primary" href="./sinyuubuturyuu-pc/index.html" target="_blank" rel="noreferrer">開く</a>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="card qr-card" aria-labelledby="qrHeading">
+      <div class="section-head">
+        <p class="eyebrow">Mobile Install</p>
+        <h2 id="qrHeading">sinyuubuturyuu インストール用QRコード</h2>
+      </div>
+
+      <div class="button-row compact">
+        <button id="downloadQrButton" class="button primary" type="button">保存先フォルダを選んでQR画像を保存</button>
+      </div>
+
+      <div class="qr-preview">
+        <img id="qrImage" alt="sinyuubuturyuu インストール用QRコード">
+      </div>
+
+      <p id="statusText" class="status-text" aria-live="polite"></p>
+    </section>
+
+    <section class="card roadmap-card" aria-labelledby="roadmapHeading">
+      <div class="section-head">
+        <p class="eyebrow">Release Prep</p>
+        <h2 id="roadmapHeading">運用開始チェック</h2>
+      </div>
+      <p class="lead">1か月以内に会社運用を始めるための準備項目を、優先順にチェックするページです。</p>
+      <div class="button-row compact">
+        <a class="button secondary" href="./release-checklist.html" target="_blank" rel="noreferrer">運用開始チェックを開く</a>
+      </div>
+    </section>
+  </main>
+
+  <script src="../dev-launcher.js"></script>
+</body>
+</html>

@@ -1135,8 +1135,9 @@ async function listDailyInspectionRecords(vehicle, driver) {
     return readDailyInspectionLocalStoreRecords(vehicle, driver);
   }
 
-  const [{ getApps, initializeApp }, firestoreModule] = await Promise.all([
+  const [{ getApps, initializeApp }, authModule, firestoreModule] = await Promise.all([
     import("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js"),
+    import("https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js"),
     import("https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js"),
   ]);
 
@@ -1145,6 +1146,10 @@ async function listDailyInspectionRecords(vehicle, driver) {
     ? getApps().find((app) => app.name === appName)
     : null;
   const app = existingApp || initializeApp(runtime.firebaseConfig, appName);
+  const auth = authModule.getAuth(app);
+  if (!auth.currentUser) {
+    await authModule.signInAnonymously(auth);
+  }
   const db = firestoreModule.getFirestore(app);
   const collectionName = String(runtime.appSettings.collectionName || "getujinitijyoutenkenhyou");
   const ref = firestoreModule.collection(db, collectionName);

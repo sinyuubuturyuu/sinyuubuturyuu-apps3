@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "Open Test Launcher",
-      "type": "pwa-msedge",
+      "type": "pwa-chrome",
       "request": "launch",
       "url": "http://127.0.0.1:8080",
       "webRoot": "${workspaceFolder}",

@@ -267,3 +267,9 @@ h2 {
     width: 100%;
   }
 }
+
+.roadmap-card {
+  padding: 28px;
+  display: grid;
+  gap: 12px;
+}

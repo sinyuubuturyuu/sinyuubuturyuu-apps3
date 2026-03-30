@@ -189,6 +189,7 @@ function getReiwaYear(year) {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
 const referenceApp = initializeApp(referenceFirebaseConfig, "reference-app");
 const referenceDb = getFirestore(referenceApp);
 const referenceAuth = getAuth(referenceApp);
@@ -440,6 +441,14 @@ async function ensureReferenceAuth() {
     return referenceAuth.currentUser;
   }
   const credential = await signInAnonymously(referenceAuth);
+  return credential.user;
+}
+
+async function ensureAppAuth() {
+  if (auth.currentUser) {
+    return auth.currentUser;
+  }
+  const credential = await signInAnonymously(auth);
   return credential.user;
 }
 
@@ -2274,6 +2283,7 @@ function fromFirestoreChecksByDay(checksByDay = {}) {
 }
 
 async function findRecord(month, vehicle, driver) {
+  await ensureAppAuth();
   const recordsRef = collection(db, FIRESTORE_COLLECTION);
   const normalizedVehicle = normalizeVehicleValue(vehicle);
   const recordQuery = query(
@@ -2407,6 +2417,7 @@ async function saveRecord() {
   };
 
   const targetDocId = existingRecord?.id || state.loadedDocId || rawDocId;
+  await ensureAppAuth();
   await setDoc(doc(db, FIRESTORE_COLLECTION, targetDocId), basePayload);
   state.loadedDocId = targetDocId;
   setStatus("保存完了");

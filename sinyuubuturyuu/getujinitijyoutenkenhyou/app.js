@@ -492,12 +492,17 @@ async function createStore() {
   }
 
   try {
-    const [{ initializeApp }, firestoreModule] = await Promise.all([
+    const [{ initializeApp }, authModule, firestoreModule] = await Promise.all([
       import("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js"),
       import("https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js")
     ]);
 
     const app = initializeApp(firebaseConfig);
+    const auth = authModule.getAuth(app);
+    if (!auth.currentUser) {
+      await authModule.signInAnonymously(auth);
+    }
     const db = firestoreModule.getFirestore(app);
     return createFirestoreStore(db, firestoreModule);
   } catch (error) {
