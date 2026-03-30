@@ -1215,6 +1215,51 @@
         return [];
       }
 
+      async function bootstrapSettingsFromBackupOnInit() {
+        if (!hasSettingsBackupApi()) {
+          return false;
+        }
+        if (vehicles.length > 0 && drivers.length > 0) {
+          return false;
+        }
+
+        let changed = false;
+
+        try {
+          if (!vehicles.length) {
+            const vehicleResult = await window.FirebaseCloudSync.loadSettingsBackup(SETTINGS_BACKUP_KIND.VEHICLES, SETTINGS_BACKUP_SLOT);
+            if (vehicleResult && vehicleResult.ok && vehicleResult.backup) {
+              const vehicleValues = normalizeVehicles(Array.isArray(vehicleResult.backup.values) ? vehicleResult.backup.values : []);
+              if (vehicleValues.length) {
+                applyRestoredSettingsBackup(SETTINGS_BACKUP_KIND.VEHICLES, vehicleValues);
+                setBackupMeta(SETTINGS_BACKUP_KIND.VEHICLES, vehicleResult.backup);
+                changed = true;
+              }
+            }
+          }
+
+          if (!drivers.length) {
+            const driverResult = await window.FirebaseCloudSync.loadSettingsBackup(SETTINGS_BACKUP_KIND.DRIVERS, SETTINGS_BACKUP_SLOT);
+            if (driverResult && driverResult.ok && driverResult.backup) {
+              const driverValues = normalizeDrivers(Array.isArray(driverResult.backup.values) ? driverResult.backup.values : []);
+              if (driverValues.length) {
+                applyRestoredSettingsBackup(SETTINGS_BACKUP_KIND.DRIVERS, driverValues);
+                setBackupMeta(SETTINGS_BACKUP_KIND.DRIVERS, driverResult.backup);
+                changed = true;
+              }
+            }
+          }
+        } catch (error) {
+          console.warn("Failed to bootstrap settings from Firebase backup:", error);
+        }
+
+        if (changed) {
+          renderSettingsBackups();
+        }
+
+        return changed;
+      }
+
       async function saveSettingsBackup(kind) {
         const normalizedKind = normalizeBackupKind(kind);
         if (!normalizedKind) return;
@@ -2464,6 +2509,14 @@
             await window.FirebaseCloudSync.init({
               getPayload: () => buildCloudPayload("autosave")
             });
+            const restored = await bootstrapSettingsFromBackupOnInit();
+            if (restored) {
+              if (!current.driverName && drivers.length > 0) current.driverName = firstDriverName();
+              if (!current.vehicleNumber && vehicles.length > 0) current.vehicleNumber = vehicles[0];
+              saveCurrent();
+              renderAll();
+            }
+            await refreshSettingsBackups();
             await refreshAvailableMonths();
             await refreshPreviousFromCloud();
           })();
