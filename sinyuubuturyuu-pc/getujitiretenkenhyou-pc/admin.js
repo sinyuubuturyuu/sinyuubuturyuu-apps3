@@ -33,6 +33,8 @@
     ...DRIVER_SETTINGS_DOC_IDS,
     ...VEHICLE_SETTINGS_DOC_IDS
   ])];
+  const FIREBASE_CONFIG_SCRIPT_SELECTOR = 'script[src*="firebase/firebase-config.js"]';
+  const FIREBASE_CONFIG_FALLBACK_PATH = "./firebase/firebase-config.js";
   const CSV_COLUMNS = [
     { key: "inspectionDate", label: "点検日" },
     { key: "vehicleNumber", label: "車両番号" },
@@ -99,6 +101,7 @@
     fieldOptions: null,
     dateFilterInitialized: false
   };
+  let firebaseConfigLoadPromise = null;
 
   function setError(message) {
     ui.errorText.textContent = message || "";
@@ -2074,9 +2077,67 @@
     return window.firebase.initializeApp(config, appName);
   }
 
+  function resolveFirebaseConfigScriptUrl() {
+    const configuredScript = document.querySelector(FIREBASE_CONFIG_SCRIPT_SELECTOR);
+    const rawSrc = configuredScript
+      ? configuredScript.getAttribute("src")
+      : FIREBASE_CONFIG_FALLBACK_PATH;
+    return new URL(rawSrc || FIREBASE_CONFIG_FALLBACK_PATH, window.location.href);
+  }
+
+  function loadFirebaseConfigScript() {
+    if (window.APP_FIREBASE_CONFIG) {
+      return Promise.resolve(window.APP_FIREBASE_CONFIG);
+    }
+
+    if (firebaseConfigLoadPromise) {
+      return firebaseConfigLoadPromise;
+    }
+
+    firebaseConfigLoadPromise = new Promise(function (resolve, reject) {
+      const scriptUrl = resolveFirebaseConfigScriptUrl();
+      scriptUrl.searchParams.set("_ts", String(Date.now()));
+
+      const script = document.createElement("script");
+      script.src = scriptUrl.toString();
+      script.async = true;
+      script.dataset.firebaseConfigLoader = "dynamic";
+
+      script.onload = function () {
+        if (window.APP_FIREBASE_CONFIG) {
+          resolve(window.APP_FIREBASE_CONFIG);
+          return;
+        }
+
+        reject(new Error(`Firebase設定は読み込まれましたが、APP_FIREBASE_CONFIG が見つかりません: ${scriptUrl.toString()}`));
+      };
+
+      script.onerror = function () {
+        reject(new Error(`Firebase設定ファイルを取得できませんでした: ${scriptUrl.toString()}`));
+      };
+
+      document.head.appendChild(script);
+    }).finally(function () {
+      if (!window.APP_FIREBASE_CONFIG) {
+        firebaseConfigLoadPromise = null;
+      }
+    });
+
+    return firebaseConfigLoadPromise;
+  }
+
   async function initFirebase() {
-    if (!window.firebase || !window.APP_FIREBASE_CONFIG) {
-      throw new Error("Firebase設定の読み込みに失敗しました。firebase/firebase-config.js を確認してください。");
+    if (!window.APP_FIREBASE_CONFIG) {
+      await loadFirebaseConfigScript();
+    }
+
+    if (!window.firebase) {
+      throw new Error("Firebase本体の読み込みに失敗しました。ネットワーク接続と Firebase CDN へのアクセスを確認してください。");
+    }
+
+    if (!window.APP_FIREBASE_CONFIG) {
+      const configUrl = resolveFirebaseConfigScriptUrl().toString();
+      throw new Error(`Firebase設定の読み込みに失敗しました。${configUrl} を確認してください。`);
     }
 
     const syncOptions = window.APP_FIREBASE_SYNC_OPTIONS || {};

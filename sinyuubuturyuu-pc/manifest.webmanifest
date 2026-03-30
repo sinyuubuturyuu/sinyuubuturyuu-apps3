@@ -2,7 +2,7 @@
   "name": "シンユウ物流パソコン用",
   "short_name": "シンユウ物流PC",
   "description": "月次タイヤ点検表と月次日常点検表のランチャー",
-  "start_url": "./index.html?v=20260322b",
+  "start_url": "./index.html?v=20260330a",
   "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",

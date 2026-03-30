@@ -3,23 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="../version-sync.js"></script>
   <script>
     (function () {
-      const version = "20260322b";
-      const url = new URL(window.location.href);
-      if (url.searchParams.get("v") === version) return;
-      url.searchParams.set("v", version);
-      window.location.replace(url.toString());
+      const versionSync = window.SinyuubuturyuuPcVersion || null;
+      const version = versionSync ? versionSync.ensureLatestVersion("20260330a") : "20260330a";
+      if (!version) return;
+      window.__SINYUUBUTURYUU_PC_VERSION__ = version;
     })();
   </script>
   <title>ポイント付与管理 | シンユウ物流パソコン用</title>
   <meta name="description" content="車番と乗務員ごとのポイントを確認して保存する管理画面">
   <link rel="icon" href="../icons/icon-sinyuubuturyuu-pc.png" type="image/png">
   <link rel="apple-touch-icon" href="../icons/icon-sinyuubuturyuu-pc.png">
-  <link rel="manifest" href="../manifest.webmanifest?v=20260322b">
+  <link rel="manifest" href="../manifest.webmanifest?v=20260330a">
   <meta name="theme-color" content="#ffffff">
-  <link rel="stylesheet" href="../shell.css?v=20260322b">
-  <link rel="stylesheet" href="./driver-points-kanri.css?v=20260322b">
+  <link rel="stylesheet" href="../shell.css?v=20260330a">
+  <link rel="stylesheet" href="./driver-points-kanri.css?v=20260330a">
 </head>
 <body class="shell-body">
   <main class="shell-page">
@@ -99,12 +99,15 @@
 
   <script>
     (function () {
+      const versionSync = window.SinyuubuturyuuPcVersion || null;
+      const version = window.__SINYUUBUTURYUU_PC_VERSION__
+        || (versionSync ? versionSync.getVersion("20260330a") : "20260330a");
       if (!("serviceWorker" in navigator)) {
         return;
       }
 
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("../sw.js?v=20260322b", {
+        navigator.serviceWorker.register("../sw.js?v=" + version, {
           updateViaCache: "none"
         }).then(function (registration) {
           return registration.update();
@@ -114,7 +117,7 @@
       });
     })();
   </script>
-  <script src="../launcher-window.js?v=20260322b"></script>
+  <script src="../launcher-window.js?v=20260330a"></script>
   <script>
     (function () {
       const topBackLink = document.querySelector(".back-link");
@@ -125,12 +128,12 @@
       }
     })();
   </script>
-  <script src="../shared-settings.js?v=20260322b"></script>
-  <script src="../getujitiretenkenhyou-pc/firebase/firebase-config.js?v=20260322b"></script>
-  <script src="./firebase-config.js?v=20260322b"></script>
+  <script src="../shared-settings.js?v=20260330a"></script>
+  <script src="../getujitiretenkenhyou-pc/firebase/firebase-config.js?v=20260330a"></script>
+  <script src="./firebase-config.js?v=20260330a"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./driver-points-kanri.js?v=20260322b"></script>
+  <script src="./driver-points-kanri.js?v=20260330a"></script>
 </body>
 </html>

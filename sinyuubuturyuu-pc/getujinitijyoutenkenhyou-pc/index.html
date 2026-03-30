@@ -3,9 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <title>Redirecting...</title>
+  <script src="../version-sync.js"></script>
   <script>
     (function () {
-      const version = "20260322b";
+      const versionSync = window.SinyuubuturyuuPcVersion || null;
+      const version = versionSync ? versionSync.getVersion("20260330a") : "20260330a";
       const targetUrl = new URL("./src/index.html", window.location.href);
       targetUrl.search = window.location.search;
       targetUrl.searchParams.set("v", version);
@@ -18,7 +20,8 @@
   <p><a id="openAppLink" href="./src/index.html">アプリを開く</a></p>
   <script>
     (function () {
-      const version = "20260322b";
+      const versionSync = window.SinyuubuturyuuPcVersion || null;
+      const version = versionSync ? versionSync.getVersion("20260330a") : "20260330a";
       const fallbackLink = document.getElementById("openAppLink");
       if (!fallbackLink) {
         return;

@@ -1,15 +1,15 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="../version-sync.js"></script>
   <script>
     (function () {
-      const version = "20260322b";
-      const url = new URL(window.location.href);
-      if (url.searchParams.get("v") === version) return;
-      url.searchParams.set("v", version);
-      window.location.replace(url.toString());
+      const versionSync = window.SinyuubuturyuuPcVersion || null;
+      const version = versionSync ? versionSync.ensureLatestVersion("20260330a") : "20260330a";
+      if (!version) return;
+      window.__SINYUUBUTURYUU_PC_VERSION__ = version;
     })();
   </script>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -18,7 +18,37 @@
   <title>シンユウ物流パソコン用</title>
   <link rel="icon" type="image/png" href="../icons/icon-sinyuubuturyuu-pc.png">
   <link rel="apple-touch-icon" href="../icons/icon-sinyuubuturyuu-pc.png">
-  <link rel="stylesheet" href="./admin.css?v=20260322b">
+  <link rel="stylesheet" href="./admin.css?v=20260330a">
+  <script>
+    (function () {
+      if (!("serviceWorker" in navigator)) return;
+
+      window.addEventListener("load", async function () {
+        try {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          if (!registrations.length) return;
+
+          await Promise.all(registrations.map(function (registration) {
+            return registration.unregister();
+          }));
+
+          if ("caches" in window && typeof window.caches.keys === "function") {
+            const cacheKeys = await window.caches.keys();
+            await Promise.all(cacheKeys.map(function (key) {
+              return window.caches.delete(key);
+            }));
+          }
+
+          if (!sessionStorage.getItem("sw_cache_cleared_once")) {
+            sessionStorage.setItem("sw_cache_cleared_once", "1");
+            window.location.reload();
+          }
+        } catch (error) {
+          console.warn("Service Worker cleanup failed:", error);
+        }
+      });
+    })();
+  </script>
 </head>
 <body>
   <main class="container">
@@ -90,52 +120,103 @@
               </th>
               <th>
                 <span class="sortable-head">
-                  <span>年</span>
-                  <button type="button" class="sort-toggle no-print" data-sort-field="year" aria-label="年で並び替え">▼</button>
-                </span>
-              </th>
-              <th>
-                <span class="sortable-head">
-                  <span>月</span>
-                  <button type="button" class="sort-toggle no-print" data-sort-field="month" aria-label="月で並び替え">▼</button>
-                </span>
-              </th>
-              <th>
-                <span class="sortable-head">
                   <span>車両番号</span>
-                  <button type="button" class="sort-toggle no-print" data-sort-field="vehicleNumber" aria-label="車両番号で並び替え">▼</button>
+                  <button type="button" class="sort-toggle no-print" data-sort-field="vehicleNumber" aria-label="車両番号で並び替え">↕</button>
                 </span>
               </th>
               <th>
                 <span class="sortable-head">
-                  <span>乗務員名</span>
-                  <button type="button" class="sort-toggle no-print" data-sort-field="driverName" aria-label="乗務員名で並び替え">▼</button>
+                  <span>乗務員</span>
+                  <button type="button" class="sort-toggle no-print" data-sort-field="driverName" aria-label="乗務員で並び替え">↕</button>
                 </span>
               </th>
-              <th>点検表</th>
+              <th>車種</th>
               <th>報告事項</th>
+              <th class="actions-col no-print">操作</th>
             </tr>
           </thead>
-          <tbody></tbody>
+          <tbody id="resultBody"></tbody>
         </table>
       </div>
     </section>
   </main>
 
-  <dialog id="detailDialog" class="detail-dialog">
-    <form class="detail-dialog__panel" method="dialog">
-      <header class="detail-dialog__header">
-        <h2>記録詳細</h2>
-        <button type="button" id="closeDetailBtn">閉じる</button>
-      </header>
-      <div id="detailBody" class="detail-dialog__body"></div>
-    </form>
-  </dialog>
+  <section id="printSheets" class="print-sheets" aria-hidden="true"></section>
 
-  <script src="../firebase/firebase-app-compat.js"></script>
-  <script src="../firebase/firebase-firestore-compat.js"></script>
-  <script src="../firebase/firebase-auth-compat.js"></script>
-  <script src="./firebase/firebase-config.js?v=20260322b"></script>
-  <script src="./admin.js?v=20260322b"></script>
+  <div id="editModal" class="modal-backdrop no-print" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+      <h2 id="editModalTitle">データ編集</h2>
+      <form id="editForm" class="edit-form">
+        <div class="edit-section">
+          <h3>基本情報</h3>
+          <div class="edit-grid">
+            <label>
+              点検日
+              <input type="date" id="editInspectionDate">
+            </label>
+            <label>
+              車両番号
+              <select id="editVehicleNumber"></select>
+            </label>
+            <label>
+              乗務員
+              <select id="editDriverName"></select>
+            </label>
+            <label>
+              車種
+              <select id="editTruckType"></select>
+            </label>
+            <label class="wide">
+              報告事項
+              <textarea id="editReportNote" rows="3" placeholder="報告事項"></textarea>
+            </label>
+          </div>
+        </div>
+
+        <div class="edit-section">
+          <h3>タイヤ</h3>
+          <div class="edit-tire-wrap">
+            <table class="edit-tire-table">
+              <thead>
+                <tr>
+                  <th>番号</th>
+                  <th>メーカー</th>
+                  <th>種類</th>
+                  <th>溝</th>
+                  <th>偏摩耗</th>
+                  <th>キズ</th>
+                  <th>空気圧</th>
+                  <th>状態</th>
+                </tr>
+              </thead>
+              <tbody id="editTireBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="submit" id="saveEditBtn">保存</button>
+          <button type="button" id="cancelEditBtn">キャンセル</button>
+        </div>
+        <p id="editErrorText" class="error modal-error" role="alert" aria-live="assertive"></p>
+      </form>
+    </section>
+  </div>
+
+  <script src="../launcher-window.js?v=20260330a"></script>
+  <script>
+    (function () {
+      if (window.launcherWindow) {
+        window.launcherWindow.maximizeCurrentWindowIfRequested();
+        window.launcherWindow.bindReturnToLauncher(document.querySelector(".back-button"));
+      }
+    })();
+  </script>
+  <script src="./firebase/firebase-config.js?v=20260330a"></script>
+  <script src="../shared-settings.js?v=20260330a"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="./admin.js?v=20260330a"></script>
 </body>
 </html>
+
