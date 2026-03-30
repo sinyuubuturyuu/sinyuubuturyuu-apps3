@@ -1,10 +1,11 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
 const rootDir = __dirname;
 const requestedPort = Number(process.argv[2] || process.env.PORT || 8080);
-const host = "127.0.0.1";
+const host = "0.0.0.0";
 const maxPortAttempts = 20;
 
 const mimeTypes = new Map([
@@ -50,14 +51,42 @@ function serveJson(response, payload) {
   );
 }
 
+function pickLanAddress() {
+  const interfaces = os.networkInterfaces();
+  for (const addresses of Object.values(interfaces)) {
+    if (!addresses) {
+      continue;
+    }
+
+    for (const address of addresses) {
+      const family = typeof address.family === "string" ? address.family : String(address.family);
+      if (family !== "IPv4" || address.internal) {
+        continue;
+      }
+
+      return address.address;
+    }
+  }
+
+  return null;
+}
+
 const server = http.createServer((request, response) => {
   if ((request.url || "").startsWith("/__dev/meta")) {
     const address = server.address();
     const activePort = address && typeof address === "object" ? address.port : requestedPort;
+    const lanAddress = pickLanAddress();
+    const localhostOrigin = `http://127.0.0.1:${activePort}`;
+    const preferredOrigin = lanAddress ? `http://${lanAddress}:${activePort}` : localhostOrigin;
+
     serveJson(response, {
       port: activePort,
-      host,
+      bindHost: host,
+      lanAddress,
+      localhostOrigin,
+      preferredOrigin,
       mobileAppPath: "/sinyuubuturyuu/index.html",
+      devMobileAppPath: "/dev/sinyuubuturyuu/index.html",
       pcAppPath: "/sinyuubuturyuu-pc/index.html"
     });
     return;
@@ -105,7 +134,12 @@ function startServer(port, attemptsRemaining) {
     const address = server.address();
     const activePort = address && typeof address === "object" ? address.port : port;
     const localhostUrl = `http://127.0.0.1:${activePort}`;
+    const lanAddress = pickLanAddress();
     console.log(`Launcher server running at ${localhostUrl}`);
+    if (lanAddress) {
+      console.log(`LAN access URL: http://${lanAddress}:${activePort}`);
+    }
+    console.log(`VSCode task ready: ${localhostUrl}`);
   });
 }
 

@@ -10,7 +10,7 @@
 <body>
   <main class="page">
     <section class="hero card">
-      <h1>シンユウ物流アプリ テスト</h1>
+      <h1>シンユウ物流アプリ</h1>
       <div class="launch-grid" aria-label="アプリ">
         <article class="app-card">
           <p class="app-kind">Mobile</p>
@@ -36,9 +36,12 @@
       </div>
 
       <div class="button-row compact">
-        <button id="refreshQrButton" class="button secondary" type="button">最新のQRコードを作る</button>
+        <button id="refreshQrButton" class="button primary" type="button">最新のQRコードを作る</button>
+        <button id="selectNoticeFileButton" class="button primary" type="button">お知らせファイルをダウンロード</button>
         <button id="downloadQrButton" class="button primary" type="button">保存先フォルダを選んでQR画像を保存</button>
       </div>
+
+      <input id="noticeFileInput" type="file" accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,image/*" hidden>
 
       <div class="qr-preview">
         <img id="qrImage" alt="sinyuubuturyuu インストール用QRコード">
@@ -57,6 +60,6 @@
     </section>
   </main>
 
-  <script src="./dev-launcher.js?v=20260330b"></script>
+  <script src="./dev-launcher.js?v=20260330j"></script>
 </body>
 </html>

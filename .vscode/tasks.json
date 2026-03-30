@@ -29,8 +29,8 @@
         },
         "background": {
           "activeOnStart": true,
-          "beginsPattern": ".",
-          "endsPattern": "Launcher server running at http://127\\.0\\.0\\.1:\\d+"
+          "beginsPattern": ".*",
+          "endsPattern": "VSCode task ready: http://127\\.0\\.0\\.1:\\d+"
         }
       }
     }

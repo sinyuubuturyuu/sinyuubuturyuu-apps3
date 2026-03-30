@@ -2,11 +2,15 @@ const QR_SIZE = 512;
 const GITHUB_PAGES_BASE_URL = "https://sinyuubuturyuu.github.io/sinyuubuturyuu-apps3";
 const PROD_INSTALL_PATH = "/sinyuubuturyuu/index.html";
 const DEV_INSTALL_PATH = "/dev/sinyuubuturyuu/index.html";
+let installBaseUrlPromise = null;
 
 const elements = {
   refreshQrButton: document.getElementById("refreshQrButton"),
+  selectNoticeFileButton: document.getElementById("selectNoticeFileButton"),
   downloadQrButton: document.getElementById("downloadQrButton"),
+  noticeFileInput: document.getElementById("noticeFileInput"),
   qrImage: document.getElementById("qrImage"),
+  installUrlText: document.getElementById("installUrlText"),
   statusText: document.getElementById("statusText")
 };
 
@@ -16,32 +20,72 @@ function initialize() {
   bindEvents();
   void refreshQrImage({ announce: false }).catch((error) => {
     console.warn("Failed to initialize QR image:", error);
-    setStatus("QR\u30b3\u30fc\u30c9\u306e\u8aad\u307f\u8fbc\u307f\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002");
+    setStatus("\u0051\u0052\u30b3\u30fc\u30c9\u306e\u8aad\u307f\u8fbc\u307f\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002");
   });
 }
 
 function bindEvents() {
   elements.refreshQrButton.addEventListener("click", async () => {
-    await withQrButtonLock(async () => {
-      await refreshQrImage({ announce: true });
+    await withLauncherButtonsLock(async () => {
+      await refreshQrImage({ announce: true, resetBaseUrl: true });
     });
   });
 
   elements.downloadQrButton.addEventListener("click", async () => {
-    await withQrButtonLock(async () => {
+    await withLauncherButtonsLock(async () => {
       await saveQrImage();
     });
   });
+
+  if (elements.selectNoticeFileButton && elements.noticeFileInput) {
+    elements.selectNoticeFileButton.addEventListener("click", () => {
+      elements.noticeFileInput.click();
+    });
+
+    elements.noticeFileInput.addEventListener("change", async (event) => {
+      await handleSelectedNoticeFile(event.currentTarget);
+    });
+  }
 }
 
-function buildInstallUrl() {
-  const baseUrl = getPublicBaseUrl();
+async function buildInstallUrl(resetBaseUrl = false) {
+  const baseUrl = await getInstallBaseUrl(resetBaseUrl);
   const installPath = isDevMode() ? DEV_INSTALL_PATH : PROD_INSTALL_PATH;
   return new URL(installPath, `${baseUrl}/`).toString();
 }
 
-function getPublicBaseUrl() {
+async function getInstallBaseUrl(reset = false) {
+  if (!installBaseUrlPromise || reset) {
+    installBaseUrlPromise = resolveInstallBaseUrl();
+  }
+
+  return installBaseUrlPromise;
+}
+
+async function resolveInstallBaseUrl() {
+  if (!isLocalLauncher()) {
+    return GITHUB_PAGES_BASE_URL;
+  }
+
+  try {
+    const response = await fetch("/__dev/meta", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("dev_meta_fetch_failed");
+    }
+
+    const meta = await response.json();
+    if (meta && typeof meta.preferredOrigin === "string" && meta.preferredOrigin) {
+      return meta.preferredOrigin.replace(/\/$/, "");
+    }
+  } catch (error) {
+    console.warn("Failed to resolve local install base URL:", error);
+  }
+
   return GITHUB_PAGES_BASE_URL;
+}
+
+function isLocalLauncher() {
+  return window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
 }
 
 function isDevMode() {
@@ -63,21 +107,25 @@ function getQrFileName() {
     : "sinyuubuturyuu-install-qr.png";
 }
 
-async function refreshQrImage({ announce }) {
-  const installUrl = buildInstallUrl();
+async function refreshQrImage({ announce, resetBaseUrl = false }) {
+  const installUrl = await buildInstallUrl(resetBaseUrl);
   const qrUrl = buildQrImageUrl(installUrl, Date.now());
 
-  await loadQrImage(qrUrl);
+  await loadImage(qrUrl);
   elements.qrImage.src = qrUrl;
   elements.qrImage.alt = `sinyuubuturyuu install QR for ${installUrl}`;
+  if (elements.installUrlText) {
+    elements.installUrlText.textContent = installUrl;
+  }
 
   if (announce) {
-    setStatus(`${getEnvironmentLabel()}\u7528\u306e\u6700\u65b0QR\u30b3\u30fc\u30c9\u3092\u4f5c\u6210\u3057\u307e\u3057\u305f\u3002`);
+    setStatus(`${getEnvironmentLabel()}\u7528\u306e\u6700\u65b0\u0051\u0052\u30b3\u30fc\u30c9\u3092\u4f5c\u6210\u3057\u307e\u3057\u305f\u3002`);
   }
 }
 
 async function saveQrImage() {
-  const qrUrl = buildQrImageUrl(buildInstallUrl(), Date.now());
+  const installUrl = await buildInstallUrl(false);
+  const qrUrl = buildQrImageUrl(installUrl, Date.now());
   const response = await fetch(qrUrl, { cache: "no-store" });
   if (!response.ok) {
     throw new Error("qr_download_failed");
@@ -114,30 +162,52 @@ async function saveQrImage() {
   setStatus("\u3053\u306e\u30d6\u30e9\u30a6\u30b6\u306f\u4fdd\u5b58\u5148\u30d5\u30a9\u30eb\u30c0\u6307\u5b9a\u306b\u672a\u5bfe\u5fdc\u306e\u305f\u3081\u3001\u901a\u5e38\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u306b\u5207\u308a\u66ff\u3048\u307e\u3057\u305f\u3002");
 }
 
-async function loadQrImage(qrUrl) {
+async function handleSelectedNoticeFile(input) {
+  const file = input.files && input.files[0];
+  input.value = "";
+  if (!file) {
+    return;
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = file.name || "notice-file";
+  link.style.display = "none";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  setStatus(`\u304a\u77e5\u3089\u305b\u30d5\u30a1\u30a4\u30eb\u3092\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u3057\u307e\u3057\u305f: ${file.name}`);
+}
+
+async function loadImage(url) {
   await new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = resolve;
-    image.onerror = () => reject(new Error("qr_image_load_failed"));
-    image.src = qrUrl;
+    image.onerror = () => reject(new Error("image_load_failed"));
+    image.src = url;
   });
 }
 
-async function withQrButtonLock(task) {
-  setButtonsDisabled(true);
+async function withLauncherButtonsLock(task) {
+  setLauncherButtonsDisabled(true);
   try {
     await task();
   } catch (error) {
-    console.warn("QR action failed:", error);
-    setStatus("QR\u30b3\u30fc\u30c9\u306e\u4f5c\u6210\u307e\u305f\u306f\u4fdd\u5b58\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002");
+    console.warn("Launcher action failed:", error);
+    setStatus("\u51e6\u7406\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002");
   } finally {
-    setButtonsDisabled(false);
+    setLauncherButtonsDisabled(false);
   }
 }
 
-function setButtonsDisabled(disabled) {
+function setLauncherButtonsDisabled(disabled) {
   elements.refreshQrButton.disabled = disabled;
   elements.downloadQrButton.disabled = disabled;
+  if (elements.selectNoticeFileButton) {
+    elements.selectNoticeFileButton.disabled = disabled;
+  }
 }
 
 function setStatus(message) {
