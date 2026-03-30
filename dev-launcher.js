@@ -1,4 +1,4 @@
-const QR_SIZE = 512;
+﻿const QR_SIZE = 512;
 const GITHUB_PAGES_BASE_URL = "https://sinyuubuturyuu.github.io/sinyuubuturyuu-apps3";
 const PROD_INSTALL_PATH = "/sinyuubuturyuu/index.html";
 const DEV_INSTALL_PATH = "/dev/sinyuubuturyuu/index.html";
@@ -7,6 +7,7 @@ let installBaseUrlPromise = null;
 const elements = {
   refreshQrButton: document.getElementById("refreshQrButton"),
   selectNoticeFileButton: document.getElementById("selectNoticeFileButton"),
+  devModeLink: document.getElementById("devModeLink"),
   downloadQrButton: document.getElementById("downloadQrButton"),
   noticeFileInput: document.getElementById("noticeFileInput"),
   qrImage: document.getElementById("qrImage"),
@@ -20,22 +21,26 @@ function initialize() {
   bindEvents();
   void refreshQrImage({ announce: false }).catch((error) => {
     console.warn("Failed to initialize QR image:", error);
-    setStatus("\u0051\u0052\u30b3\u30fc\u30c9\u306e\u8aad\u307f\u8fbc\u307f\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002");
+    setStatus("QRコードの読み込みに失敗しました。");
   });
 }
 
 function bindEvents() {
-  elements.refreshQrButton.addEventListener("click", async () => {
-    await withLauncherButtonsLock(async () => {
-      await refreshQrImage({ announce: true, resetBaseUrl: true });
+  if (elements.refreshQrButton) {
+    elements.refreshQrButton.addEventListener("click", async () => {
+      await withLauncherButtonsLock(async () => {
+        await refreshQrImage({ announce: true, resetBaseUrl: true });
+      });
     });
-  });
+  }
 
-  elements.downloadQrButton.addEventListener("click", async () => {
-    await withLauncherButtonsLock(async () => {
-      await saveQrImage();
+  if (elements.downloadQrButton) {
+    elements.downloadQrButton.addEventListener("click", async () => {
+      await withLauncherButtonsLock(async () => {
+        await saveQrImage();
+      });
     });
-  });
+  }
 
   if (elements.selectNoticeFileButton && elements.noticeFileInput) {
     elements.selectNoticeFileButton.addEventListener("click", () => {
@@ -44,6 +49,19 @@ function bindEvents() {
 
     elements.noticeFileInput.addEventListener("change", async (event) => {
       await handleSelectedNoticeFile(event.currentTarget);
+    });
+  }
+
+  if (elements.devModeLink) {
+    elements.devModeLink.addEventListener("click", async (event) => {
+      event.preventDefault();
+      const canOpen = await canOpenDevMode();
+      if (!canOpen) {
+        window.alert("DEVモードは開発環境のパソコンと同じWi-Fiでのみ使えます。今のネットワーク環境では開けません。");
+        return;
+      }
+
+      window.location.assign(elements.devModeLink.href);
     });
   }
 }
@@ -84,6 +102,16 @@ async function resolveInstallBaseUrl() {
   return GITHUB_PAGES_BASE_URL;
 }
 
+async function canOpenDevMode() {
+  try {
+    const response = await fetch("/__dev/meta", { cache: "no-store" });
+    return response.ok;
+  } catch (error) {
+    console.warn("DEV mode availability check failed:", error);
+    return false;
+  }
+}
+
 function isLocalLauncher() {
   return window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
 }
@@ -98,7 +126,7 @@ function buildQrImageUrl(text, cacheKey = Date.now()) {
 }
 
 function getEnvironmentLabel() {
-  return isDevMode() ? "DEV" : "\u672c\u756a";
+  return isDevMode() ? "DEV" : "本番";
 }
 
 function getQrFileName() {
@@ -112,14 +140,16 @@ async function refreshQrImage({ announce, resetBaseUrl = false }) {
   const qrUrl = buildQrImageUrl(installUrl, Date.now());
 
   await loadImage(qrUrl);
-  elements.qrImage.src = qrUrl;
-  elements.qrImage.alt = `sinyuubuturyuu install QR for ${installUrl}`;
+  if (elements.qrImage) {
+    elements.qrImage.src = qrUrl;
+    elements.qrImage.alt = `sinyuubuturyuu install QR for ${installUrl}`;
+  }
   if (elements.installUrlText) {
     elements.installUrlText.textContent = installUrl;
   }
 
   if (announce) {
-    setStatus(`${getEnvironmentLabel()}\u7528\u306e\u6700\u65b0\u0051\u0052\u30b3\u30fc\u30c9\u3092\u4f5c\u6210\u3057\u307e\u3057\u305f\u3002`);
+    setStatus(`${getEnvironmentLabel()}用の最新QRコードを作成しました。`);
   }
 }
 
@@ -140,11 +170,11 @@ async function saveQrImage() {
       const writable = await fileHandle.createWritable();
       await writable.write(qrBlob);
       await writable.close();
-      setStatus(`\u9078\u629e\u3057\u305f\u30d5\u30a9\u30eb\u30c0\u306b\u4fdd\u5b58\u3057\u307e\u3057\u305f: ${getQrFileName()}`);
+      setStatus(`選択したフォルダに保存しました : ${getQrFileName()}`);
       return;
     } catch (error) {
       if (error && error.name === "AbortError") {
-        setStatus("\u30d5\u30a9\u30eb\u30c0\u9078\u629e\u3092\u30ad\u30e3\u30f3\u30bb\u30eb\u3057\u307e\u3057\u305f\u3002");
+        setStatus("フォルダ選択をキャンセルしました。");
         return;
       }
       console.warn("Directory picker save failed, falling back to normal download:", error);
@@ -159,7 +189,7 @@ async function saveQrImage() {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-  setStatus("\u3053\u306e\u30d6\u30e9\u30a6\u30b6\u306f\u4fdd\u5b58\u5148\u30d5\u30a9\u30eb\u30c0\u6307\u5b9a\u306b\u672a\u5bfe\u5fdc\u306e\u305f\u3081\u3001\u901a\u5e38\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u306b\u5207\u308a\u66ff\u3048\u307e\u3057\u305f\u3002");
+  setStatus("このブラウザは保存先フォルダ指定に未対応のため、通常ダウンロードに切り替えました。");
 }
 
 async function handleSelectedNoticeFile(input) {
@@ -178,7 +208,7 @@ async function handleSelectedNoticeFile(input) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-  setStatus(`\u304a\u77e5\u3089\u305b\u30d5\u30a1\u30a4\u30eb\u3092\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u3057\u307e\u3057\u305f: ${file.name}`);
+  setStatus(`お知らせファイルをダウンロードしました : ${file.name}`);
 }
 
 async function loadImage(url) {
@@ -196,20 +226,26 @@ async function withLauncherButtonsLock(task) {
     await task();
   } catch (error) {
     console.warn("Launcher action failed:", error);
-    setStatus("\u51e6\u7406\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002");
+    setStatus("処理に失敗しました。");
   } finally {
     setLauncherButtonsDisabled(false);
   }
 }
 
 function setLauncherButtonsDisabled(disabled) {
-  elements.refreshQrButton.disabled = disabled;
-  elements.downloadQrButton.disabled = disabled;
+  if (elements.refreshQrButton) {
+    elements.refreshQrButton.disabled = disabled;
+  }
+  if (elements.downloadQrButton) {
+    elements.downloadQrButton.disabled = disabled;
+  }
   if (elements.selectNoticeFileButton) {
     elements.selectNoticeFileButton.disabled = disabled;
   }
 }
 
 function setStatus(message) {
-  elements.statusText.textContent = message;
+  if (elements.statusText) {
+    elements.statusText.textContent = message;
+  }
 }

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
@@ -53,13 +53,15 @@
       </div>
       <p id="statusText" class="status-text" aria-live="polite"></p>
     </section>
+
     <section class="card" aria-labelledby="devHeading">
       <div class="section-head">
         <p class="eyebrow">Development</p>
         <h2 id="devHeading">DEV</h2>
       </div>
       <div class="button-row">
-        <a class="button primary" href="./dev/index.html">DEV</a>
+        <a id="devModeLink" class="button primary" href="./dev/index.html">DEV</a>
+        <p id="devModeMessage" class="status-text dev-mode-message" aria-live="polite">DEVモードは開発環境のパソコンと同じWi-Fiでのみ使えます。</p>
       </div>
     </section>
   </main>
