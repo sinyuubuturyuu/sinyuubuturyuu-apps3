@@ -4,13 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>シンユウ物流 テストランチャー</title>
-  <meta name="description" content="sinyuubuturyuu と sinyuubuturyuu-pc のテスト用ランチャーです。">
+  <meta name="description" content="sinyuubuturyuu と sinyuubuturyuu-pc の DEV テストランチャーです。">
   <link rel="stylesheet" href="../dev-launcher.css">
 </head>
 <body>
   <main class="page">
     <section class="hero card">
-      <h1>シンユウ物流アプリ テスト</h1>
+      <div class="hero-head">
+        <h1>シンユウ物流アプリテスト</h1>
+        <div class="hero-actions">
+          <span class="dev-pill">DEV</span>
+          <a class="button secondary hero-back-button" href="../index.html">戻る</a>
+        </div>
+      </div>
       <div class="launch-grid" aria-label="アプリ">
         <article class="app-card">
           <p class="app-kind">Mobile</p>
@@ -36,6 +42,7 @@
       </div>
 
       <div class="button-row compact">
+        <button id="refreshQrButton" class="button secondary" type="button">最新のQRコードを作る</button>
         <button id="downloadQrButton" class="button primary" type="button">保存先フォルダを選んでQR画像を保存</button>
       </div>
 
@@ -51,7 +58,7 @@
         <p class="eyebrow">Release Prep</p>
         <h2 id="roadmapHeading">運用開始チェック</h2>
       </div>
-      <p class="lead">1か月以内に会社運用を始めるための準備項目を、優先順にチェックするページです。</p>
+      <p class="lead">1か月以内に運用開始を進めるための優先順位を、順番にチェックするページです。</p>
       <div class="button-row compact">
         <a class="button secondary" href="./release-checklist.html" target="_blank" rel="noreferrer">運用開始チェックを開く</a>
       </div>

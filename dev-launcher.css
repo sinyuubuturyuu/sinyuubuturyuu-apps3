@@ -273,3 +273,50 @@ h2 {
   display: grid;
   gap: 12px;
 }
+.hero-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dev-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 12px 16px;
+  border: 1px solid rgba(0, 108, 103, 0.18);
+  border-radius: 999px;
+  background: rgba(0, 108, 103, 0.08);
+  color: var(--primary);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.hero-back-button {
+  min-width: 96px;
+}
+
+@media (max-width: 640px) {
+  .hero-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero-actions {
+    justify-content: flex-start;
+  }
+
+  .hero-actions .button {
+    width: auto;
+  }
+}
