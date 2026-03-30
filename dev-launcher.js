@@ -41,17 +41,7 @@ function buildInstallUrl() {
 }
 
 function getPublicBaseUrl() {
-  const { hostname, origin, pathname } = window.location;
-
-  if (hostname === "127.0.0.1" || hostname === "localhost") {
-    return GITHUB_PAGES_BASE_URL;
-  }
-
-  if (pathname.startsWith("/sinyuubuturyuu-apps3/")) {
-    return new URL("/sinyuubuturyuu-apps3/", origin).toString().replace(/\/$/, "");
-  }
-
-  return origin;
+  return GITHUB_PAGES_BASE_URL;
 }
 
 function isDevMode() {
