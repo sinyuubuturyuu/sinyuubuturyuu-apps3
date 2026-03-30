@@ -49,7 +49,19 @@
         <img id="qrImage" alt="sinyuubuturyuu インストール用QRコード">
       </div>
 
+      <div class="url-panel">
+        <p class="url-label">Install URL</p>
+        <code id="installUrlText" class="install-url"></code>
+      </div>
+
       <p id="statusText" class="status-text" aria-live="polite"></p>
+
+      <div class="url-panel dev-note-panel" aria-label="DEV利用時の注意">
+        <p class="url-label">ご注意</p>
+        <p>このDEV用QRコードとアプリは、開発環境のパソコンと同じWi-Fiに接続しているスマホでのみ利用できます。</p>
+        <p>別のWi-Fi、4G/5G、他のネットワークでは開けません。外で使うものではなく、同じ場所での動作確認用です。</p>
+        <p>外出先や通常運用で使う場合は、DEVではなく本番モードを使ってください。</p>
+      </div>
     </section>
 
     <section class="card roadmap-card" aria-labelledby="roadmapHeading">

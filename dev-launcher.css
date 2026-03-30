@@ -244,6 +244,15 @@ h2 {
   margin-top: 14px;
 }
 
+.dev-note-panel p {
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.dev-note-panel .url-label {
+  color: var(--primary);
+}
+
 @media (max-width: 820px) {
   .launch-grid,
   .controls-grid {
