@@ -86,6 +86,9 @@ const sharedSettings = window.SharedLauncherSettings;
 const elements = {
   app1Button: document.getElementById("app1Button"),
   app2Button: document.getElementById("app2Button"),
+  installCallout: document.getElementById("installCallout"),
+  installAppButton: document.getElementById("installAppButton"),
+  installGuideText: document.getElementById("installGuideText"),
   settingsButton: document.getElementById("settingsButton"),
   currentVehicleNumber: document.getElementById("currentVehicleNumber"),
   currentDriverName: document.getElementById("currentDriverName"),
@@ -106,6 +109,7 @@ const elements = {
 const state = {
   shared: sharedSettings.ensureState(),
   cloudReady: false,
+  installPromptEvent: null,
   referenceOptions: {
     vehicles: [],
     drivers: [],
@@ -127,6 +131,7 @@ function renderAll() {
   refreshSharedState();
   applyTheme();
   renderLauncherButtons();
+  renderInstallCallout();
   renderCurrentSelection();
   renderSettings();
 }
@@ -540,6 +545,12 @@ async function refreshReferenceOptions() {
   }
 }
 function bindEvents() {
+  if (elements.installAppButton) {
+    elements.installAppButton.addEventListener("click", async () => {
+      await promptInstallApp();
+    });
+  }
+
   elements.app1Button.addEventListener("click", () => {
     void openMonthlyApp();
   });
@@ -593,6 +604,70 @@ function bindEvents() {
     if (!value) return;
     setCurrentTruckType(value);
   });
+}
+
+function renderInstallCallout() {
+  if (!elements.installCallout || !elements.installGuideText) {
+    return;
+  }
+
+  if (isStandaloneMode()) {
+    elements.installCallout.hidden = true;
+    return;
+  }
+
+  elements.installCallout.hidden = false;
+
+  if (state.installPromptEvent && elements.installAppButton) {
+    elements.installAppButton.hidden = false;
+    elements.installGuideText.textContent = "この画面からシンユウ物流アプリをインストールできます。";
+    return;
+  }
+
+  if (isIosDevice()) {
+    if (elements.installAppButton) {
+      elements.installAppButton.hidden = true;
+    }
+    elements.installGuideText.textContent = "iPhone / iPad は共有メニューから「ホーム画面に追加」を選んでください。";
+    return;
+  }
+
+  if (elements.installAppButton) {
+    elements.installAppButton.hidden = true;
+  }
+  elements.installGuideText.textContent = "ブラウザのメニューから「アプリをインストール」または「ホーム画面に追加」を選んでください。";
+}
+
+async function promptInstallApp() {
+  const promptEvent = state.installPromptEvent;
+  if (!promptEvent) {
+    renderInstallCallout();
+    return;
+  }
+
+  state.installPromptEvent = null;
+  renderInstallCallout();
+
+  try {
+    await promptEvent.prompt();
+    if (promptEvent.userChoice && typeof promptEvent.userChoice.then === "function") {
+      await promptEvent.userChoice;
+    }
+  } catch (error) {
+    console.warn("Install prompt failed:", error);
+  } finally {
+    renderInstallCallout();
+  }
+}
+
+function isStandaloneMode() {
+  return window.matchMedia("(display-mode: standalone)").matches
+    || window.matchMedia("(display-mode: fullscreen)").matches
+    || (typeof window.navigator.standalone === "boolean" && window.navigator.standalone === true);
+}
+
+function isIosDevice() {
+  return /iPhone|iPad|iPod/i.test(window.navigator.userAgent || "");
 }
 function closeSettingsDialog() {
   elements.settingsDialog.close();
@@ -1351,3 +1426,14 @@ function registerServiceWorker() {
       });
   });
 }
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  state.installPromptEvent = event;
+  renderInstallCallout();
+});
+
+window.addEventListener("appinstalled", () => {
+  state.installPromptEvent = null;
+  renderInstallCallout();
+});

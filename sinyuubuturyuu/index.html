@@ -12,13 +12,17 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./sinyuubuturyuu-icon.png" type="image/png">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
-  <link rel="stylesheet" href="./launcher.css?v=20260321a">
+  <link rel="stylesheet" href="./launcher.css?v=20260330b">
 </head>
 <body>
   <main class="launcher">
     <section class="launcher-card" aria-label="アプリ選択">
       <img class="launcher-logo" src="./sinyuubuturyuu-icon.png" alt="シンユウ物流アプリアイコン">
       <h1>シンユウ物流アプリ</h1>
+      <div id="installCallout" class="install-callout" hidden>
+        <button id="installAppButton" class="launcher-button install-button" type="button">このアプリをインストール</button>
+        <p id="installGuideText" class="install-guide" aria-live="polite"></p>
+      </div>
       <div class="button-group">
         <button id="app1Button" class="launcher-button primary" type="button"></button>
         <button id="app2Button" class="launcher-button primary" type="button"></button>
@@ -106,6 +110,6 @@
   <script src="./driver-points/driver-points.js?v=20260322-1"></script>
   <script src="./getujitiretenkenhyou/firebase/firebase-config.js?v=20260322-1"></script>
   <script src="./getujitiretenkenhyou/firebase/firebase-cloud-sync.js?v=20260322-1"></script>
-  <script src="./launcher.js?v=20260322-1"></script>
+  <script src="./launcher.js?v=20260330b"></script>
 </body>
 </html>
