@@ -1,5 +1,5 @@
 window.APP_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDdLIx-gZNn3i9LrT3XY6dyyhFXQ8Ogw6A",
+  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
   authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
   projectId: "sinyuubuturyuu-dev",
   storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
@@ -11,3 +11,4 @@ window.APP_SETTINGS = {
   collectionName: "getujinitijyoutenkenhyou",
   useLocalFallbackWhenFirebaseIsMissing: true
 };
+

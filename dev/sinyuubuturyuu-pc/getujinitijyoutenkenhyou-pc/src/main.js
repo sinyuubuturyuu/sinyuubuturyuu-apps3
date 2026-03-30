@@ -1,4 +1,4 @@
-﻿import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, updateCurrentUser } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   collection,
@@ -47,7 +47,7 @@ const EXCEL_STAMP_IMAGE_SIZES = {
 let jsZipModulePromise = null;
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDdLIx-gZNn3i9LrT3XY6dyyhFXQ8Ogw6A",
+  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
   authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
   projectId: "sinyuubuturyuu-dev",
   storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
@@ -56,7 +56,7 @@ const firebaseConfig = {
 };
 
 const referenceFirebaseConfig = {
-  apiKey: "AIzaSyDdLIx-gZNn3i9LrT3XY6dyyhFXQ8Ogw6A",
+  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
   authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
   projectId: "sinyuubuturyuu-dev",
   storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
@@ -2566,6 +2566,7 @@ renderBody();
 renderBottomStampRow();
 syncToolbarWidth();
 loadReferenceOptions().catch((err) => setStatus(`候補一覧の取得に失敗しました: ${err.message}`, true));
+
 
 
 

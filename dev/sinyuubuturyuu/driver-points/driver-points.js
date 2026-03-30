@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   "use strict";
 
   const FEATURE_STORAGE_KEY = "driver.points.feature.enabled.v1";
@@ -8,7 +8,7 @@
     eventPrefix: "driver_points_event"
   });
   const FIREBASE_CONFIG = Object.freeze({
-    apiKey: "AIzaSyDdLIx-gZNn3i9LrT3XY6dyyhFXQ8Ogw6A",
+    apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
     authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
     projectId: "sinyuubuturyuu-dev",
     storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
@@ -1003,5 +1003,6 @@
     bootUiWhenReady();
   }
 })();
+
 
 

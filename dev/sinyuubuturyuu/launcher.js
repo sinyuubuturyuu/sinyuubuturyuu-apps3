@@ -1,4 +1,4 @@
-﻿const APP_CONFIG = {
+const APP_CONFIG = {
   app1Name: "月次タイヤ点検表",
   app1Path: "./getujitiretenkenhyou/index.html",
   app2Name: "月次日常点検表",
@@ -7,7 +7,7 @@
 
 const MONTHLY_COMPLETE_IMAGE_SRC = "./getujitiretenkenhyou/icons/monthly-complete.png";
 const REFERENCE_FIREBASE_CONFIG = Object.freeze(window.APP_FIREBASE_DIRECTORY_CONFIG || {
-  apiKey: "AIzaSyDdLIx-gZNn3i9LrT3XY6dyyhFXQ8Ogw6A",
+  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
   authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
   projectId: "sinyuubuturyuu-dev",
   storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
@@ -38,7 +38,7 @@ const MONTHLY_COMPLETE_IMAGE_ALT = "Monthly inspection complete.";
 const DAILY_INSPECTION_COMPLETE_IMAGE_SRC = "./getujinitijyoutenkenhyou/icons/monthly-complete.png";
 const DAILY_INSPECTION_COMPLETE_IMAGE_ALT = "Daily inspection complete for this month.";
 const DAILY_INSPECTION_FIREBASE_CONFIG = Object.freeze({
-  apiKey: "AIzaSyDdLIx-gZNn3i9LrT3XY6dyyhFXQ8Ogw6A",
+  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
   authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
   projectId: "sinyuubuturyuu-dev",
   storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
@@ -1554,6 +1554,7 @@ function registerServiceWorker() {
       });
   });
 }
+
 
 
 

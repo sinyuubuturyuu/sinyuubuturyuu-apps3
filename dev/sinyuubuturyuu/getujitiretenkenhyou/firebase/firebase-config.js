@@ -1,11 +1,11 @@
-﻿// Firebase runtime config
+// Firebase runtime config
 // Fill production values and set enabled=true.
 // Keep keys out of index.html by using this file.
 (function () {
   "use strict";
 
   window.APP_FIREBASE_CONFIG = {
-    apiKey: "AIzaSyDdLIx-gZNn3i9LrT3XY6dyyhFXQ8Ogw6A",
+    apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
     authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
     projectId: "sinyuubuturyuu-dev",
     appId: "1:997788842966:web:e011e7340e2af863c40277",
@@ -29,7 +29,7 @@
   };
 
   window.APP_FIREBASE_DIRECTORY_CONFIG = {
-    apiKey: "AIzaSyDdLIx-gZNn3i9LrT3XY6dyyhFXQ8Ogw6A",
+    apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
     authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
     projectId: "sinyuubuturyuu-dev",
     storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
@@ -48,4 +48,5 @@
     useAnonymousAuth: false
   };
 })();
+
 
