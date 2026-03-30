@@ -1,7 +1,7 @@
 const QR_SIZE = 512;
 const GITHUB_PAGES_BASE_URL = "https://sinyuubuturyuu.github.io/sinyuubuturyuu-apps3";
-const PROD_INSTALL_PATH = "/sinyuubuturyuu/index.html";
-const DEV_INSTALL_PATH = "/dev/sinyuubuturyuu/index.html";
+const PROD_INSTALL_PATH = "sinyuubuturyuu/index.html";
+const DEV_INSTALL_PATH = "dev/sinyuubuturyuu/index.html";
 let installBaseUrlPromise = null;
 
 const elements = {
@@ -68,24 +68,6 @@ async function getInstallBaseUrl(reset = false) {
 }
 
 async function resolveInstallBaseUrl() {
-  if (!isLocalLauncher()) {
-    return GITHUB_PAGES_BASE_URL;
-  }
-
-  try {
-    const response = await fetch("/__dev/meta", { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error("dev_meta_fetch_failed");
-    }
-
-    const meta = await response.json();
-    if (meta && typeof meta.preferredOrigin === "string" && meta.preferredOrigin) {
-      return meta.preferredOrigin.replace(/\/$/, "");
-    }
-  } catch (error) {
-    console.warn("Failed to resolve local install base URL:", error);
-  }
-
   return GITHUB_PAGES_BASE_URL;
 }
 
