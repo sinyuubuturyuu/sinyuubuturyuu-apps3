@@ -1,14 +1,12 @@
-﻿const QR_SIZE = 512;
+const QR_SIZE = 512;
 const GITHUB_PAGES_BASE_URL = "https://sinyuubuturyuu.github.io/sinyuubuturyuu-apps3";
 const PROD_INSTALL_PATH = "/sinyuubuturyuu/index.html";
 const DEV_INSTALL_PATH = "/dev/sinyuubuturyuu/index.html";
-const DEV_LAUNCHER_STORAGE_KEY = "sinyuubuturyuu_dev_launcher_base_url";
 let installBaseUrlPromise = null;
 
 const elements = {
   refreshQrButton: document.getElementById("refreshQrButton"),
   selectNoticeFileButton: document.getElementById("selectNoticeFileButton"),
-  devModeLink: document.getElementById("devModeLink"),
   downloadQrButton: document.getElementById("downloadQrButton"),
   noticeFileInput: document.getElementById("noticeFileInput"),
   qrImage: document.getElementById("qrImage"),
@@ -53,89 +51,6 @@ function bindEvents() {
     });
   }
 
-}
-
-async function openDevMode() {
-  if (canOpenLocalDevDirectly()) {
-    window.location.assign(buildDevPageUrl(window.location.origin));
-    return;
-  }
-
-  const savedBaseUrl = loadSavedDevLauncherBaseUrl();
-  const input = window.prompt(
-    "\u958b\u767a\u74b0\u5883URL\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u4f8b: http://192.168.3.22:8080",
-    savedBaseUrl || ""
-  );
-
-  if (input === null) {
-    return;
-  }
-
-  const normalizedBaseUrl = normalizeDevLauncherBaseUrl(input);
-  if (!normalizedBaseUrl) {
-    window.alert("\u958b\u767a\u74b0\u5883URL\u304c\u4e0d\u6b63\u3067\u3059\u3002\u4f8b: http://192.168.3.22:8080");
-    return;
-  }
-
-  saveDevLauncherBaseUrl(normalizedBaseUrl);
-  window.location.assign(buildDevPageUrl(normalizedBaseUrl));
-}
-
-function canOpenLocalDevDirectly() {
-  return window.location.protocol === "http:" && isLocalDevHost(window.location.hostname);
-}
-
-function isLocalDevHost(hostname) {
-  return hostname === "127.0.0.1"
-    || hostname === "localhost"
-    || /^192\.168\./.test(hostname)
-    || /^10\./.test(hostname)
-    || /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
-}
-
-function normalizeDevLauncherBaseUrl(input) {
-  const trimmed = String(input || "").trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
-
-  try {
-    const url = new URL(candidate);
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return null;
-    }
-
-    url.pathname = "/";
-    url.search = "";
-    url.hash = "";
-    return url.toString().replace(/\/$/, "");
-  } catch (error) {
-    console.warn("Invalid DEV launcher base URL:", error);
-    return null;
-  }
-}
-
-function buildDevPageUrl(baseUrl) {
-  return new URL(DEV_INSTALL_PATH, `${baseUrl}/`).toString();
-}
-
-function loadSavedDevLauncherBaseUrl() {
-  try {
-    return window.localStorage.getItem(DEV_LAUNCHER_STORAGE_KEY) || "";
-  } catch (error) {
-    console.warn("Failed to read DEV launcher base URL:", error);
-    return "";
-  }
-}
-
-function saveDevLauncherBaseUrl(baseUrl) {
-  try {
-    window.localStorage.setItem(DEV_LAUNCHER_STORAGE_KEY, baseUrl);
-  } catch (error) {
-    console.warn("Failed to save DEV launcher base URL:", error);
-  }
 }
 
 async function buildInstallUrl(resetBaseUrl = false) {
