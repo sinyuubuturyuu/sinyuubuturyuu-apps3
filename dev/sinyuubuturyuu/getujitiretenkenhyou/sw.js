@@ -1,5 +1,4 @@
-const CACHE_PREFIX = "dev-monthly-tire-check";
-const CACHE_NAME = `${CACHE_PREFIX}-v47`;
+const CACHE_NAME = "monthly-tire-check-v47";
 const ASSETS = [
   "./",
   "./index.html",
@@ -34,7 +33,7 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+          .filter((key) => key !== CACHE_NAME)
           .map((key) => caches.delete(key))
       )
     )
@@ -47,11 +46,13 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   const isSameOrigin = url.origin === self.location.origin;
 
+  // Cross-origin requests like Firebase/Firestore should bypass the app cache.
   if (!isSameOrigin) {
     event.respondWith(fetch(event.request));
     return;
   }
 
+  // Firebase runtime files must be fresh (avoid stale SW cache)
   if (
     url.pathname.endsWith("/firebase/firebase-config.js")
     || url.pathname.endsWith("/firebase/firebase-cloud-sync.js")

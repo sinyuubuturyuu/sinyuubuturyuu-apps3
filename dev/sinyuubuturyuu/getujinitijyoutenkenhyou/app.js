@@ -1,4 +1,4 @@
-const firebaseConfig = window.APP_FIREBASE_CONFIG || {};
+﻿const firebaseConfig = window.APP_FIREBASE_CONFIG || {};
 const appSettings = {
   collectionName: "getujinitijyoutenkenhyou",
   useLocalFallbackWhenFirebaseIsMissing: true,
@@ -1589,14 +1589,12 @@ async function clearLegacyCaches() {
     return;
   }
 
-  const registration = await navigator.serviceWorker.getRegistration();
+  const registrations = await navigator.serviceWorker.getRegistrations();
   const cacheKeys = await caches.keys();
-  const legacyCacheKeys = cacheKeys.filter((key) => key.startsWith("dev-monthly-inspection-shell"));
-  const hasLegacyState = Boolean(registration) || legacyCacheKeys.length > 0;
+  const legacyCacheKeys = cacheKeys.filter((key) => key.startsWith("monthly-inspection-shell-"));
+  const hasLegacyState = registrations.length > 0 || legacyCacheKeys.length > 0;
 
-  if (registration) {
-    await registration.unregister();
-  }
+  await Promise.all(registrations.map((registration) => registration.unregister()));
   await Promise.all(legacyCacheKeys.map((key) => caches.delete(key)));
 
   if (hasLegacyState && !sessionStorage.getItem("monthlyInspectionCacheReset")) {

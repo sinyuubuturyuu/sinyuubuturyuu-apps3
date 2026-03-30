@@ -36,7 +36,7 @@
         <a id="tireInspectionButton" class="action-button primary" href="./getujitiretenkenhyou-pc/index.html">月次タイヤ点検表</a>
         <a id="dailyInspectionButton" class="action-button primary" href="./getujinitijyoutenkenhyou-pc/index.html">月次日常点検表</a>
         <a id="driverPointsButton" class="action-button primary" href="./driver-points-kanri/index.html">ポイント管理</a>
-        <a id="settingsButton" class="action-button secondary" href="./settings.html">設定</a>
+        <a class="action-button secondary" href="./settings.html">設定</a>
       </nav>
     </section>
   </main>
@@ -50,7 +50,7 @@
       const tireInspectionButton = document.getElementById("tireInspectionButton");
       const dailyInspectionButton = document.getElementById("dailyInspectionButton");
       const driverPointsButton = document.getElementById("driverPointsButton");
-      const settingsButton = document.getElementById("settingsButton");
+      const settingsButton = document.querySelector(".action-button.secondary");
 
       setVersionedHref(tireInspectionButton, "./getujitiretenkenhyou-pc/index.html");
       setVersionedHref(dailyInspectionButton, "./getujinitijyoutenkenhyou-pc/index.html");

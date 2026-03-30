@@ -1,6 +1,5 @@
 const APP_VERSION = "20260322-1";
-const CACHE_PREFIX = "dev-monthly-inspection-shell";
-const CACHE_NAME = `${CACHE_PREFIX}-${APP_VERSION}`;
+const CACHE_NAME = `monthly-inspection-shell-${APP_VERSION}`;
 const APP_SHELL = [
   "./",
   `./index.html?v=${APP_VERSION}`,
@@ -28,7 +27,7 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+          .filter((key) => key !== CACHE_NAME)
           .map((key) => caches.delete(key))
       )
     ).then(() => self.clients.claim())

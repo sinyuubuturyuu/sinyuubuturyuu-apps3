@@ -1,5 +1,4 @@
-const CACHE_PREFIX = "dev-sinyuubuturyuu-launcher";
-const CACHE_NAME = `${CACHE_PREFIX}-v19`;
+const CACHE_NAME = "sinyuubuturyuu-launcher-v19";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -33,7 +32,7 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+          .filter((key) => key !== CACHE_NAME)
           .map((key) => caches.delete(key))
       )
     )

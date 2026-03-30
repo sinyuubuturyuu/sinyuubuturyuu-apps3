@@ -1776,10 +1776,10 @@
         
         // Service Worker を登録解除
         try {
-          const registration = await navigator.serviceWorker.getRegistration();
-          if (registration) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          registrations.forEach((registration) => {
             registration.unregister().catch(() => {});
-          }
+          });
         } catch {
           // noop
         }
