@@ -103,6 +103,78 @@
   };
   let firebaseConfigLoadPromise = null;
 
+  function timeoutAfter(ms) {
+    if (!Number.isFinite(ms) || ms <= 0) {
+      return null;
+    }
+    return new Promise((resolve) => {
+      window.setTimeout(resolve, ms);
+    });
+  }
+
+  async function waitForCompatUser(auth, waitMs = 5000) {
+    if (auth.currentUser) {
+      return auth.currentUser;
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let unsubscribe = function () {};
+      const finish = (user) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        unsubscribe();
+        resolve(user || null);
+      };
+
+      unsubscribe = auth.onAuthStateChanged((user) => finish(user), () => finish(null));
+      const timer = timeoutAfter(waitMs);
+      if (timer) {
+        timer.then(() => finish(auth.currentUser || null));
+      }
+    });
+  }
+
+  function getDefaultCompatAuth() {
+    if (!window.firebase || !Array.isArray(window.firebase.apps)) {
+      return null;
+    }
+
+    const defaultApp = window.firebase.apps.find((app) => app.name === "[DEFAULT]")
+      || (window.firebase.apps.length ? window.firebase.apps[0] : null);
+    if (!defaultApp || typeof defaultApp.auth !== "function") {
+      return null;
+    }
+
+    return defaultApp.auth();
+  }
+
+  async function ensureSignedInCompatAuth(auth) {
+    let user = auth.currentUser || await waitForCompatUser(auth);
+    if (user) {
+      return user;
+    }
+
+    const defaultAuth = getDefaultCompatAuth();
+    const defaultUser = defaultAuth ? (defaultAuth.currentUser || await waitForCompatUser(defaultAuth)) : null;
+    if (defaultUser && typeof auth.updateCurrentUser === "function") {
+      try {
+        await auth.updateCurrentUser(defaultUser);
+      } catch (error) {
+        console.warn("Failed to reuse existing Firebase login:", error);
+      }
+      user = auth.currentUser || await waitForCompatUser(auth);
+    }
+
+    if (!user) {
+      throw new Error("ログインしてください。");
+    }
+
+    return user;
+  }
+
   function setError(message) {
     ui.errorText.textContent = message || "";
   }
@@ -2145,9 +2217,7 @@
     state.collection = syncOptions.collection || DEFAULT_COLLECTION;
 
     const auth = primaryApp.auth();
-    if (syncOptions.useAnonymousAuth !== false && !auth.currentUser) {
-      await auth.signInAnonymously();
-    }
+    await ensureSignedInCompatAuth(auth);
 
     state.db = primaryApp.firestore();
     state.settingsDb = state.db;
@@ -2165,9 +2235,7 @@
         directorySyncOptions.appName || "sinyuubuturyuu-directory"
       );
       const directoryAuth = directoryApp.auth();
-      if (directorySyncOptions.useAnonymousAuth !== false && !directoryAuth.currentUser) {
-        await directoryAuth.signInAnonymously();
-      }
+      await ensureSignedInCompatAuth(directoryAuth);
 
       state.settingsDb = directoryApp.firestore();
       state.settingsCollection = directorySyncOptions.collection || DEFAULT_COLLECTION;
@@ -2411,3 +2479,7 @@
 
   init();
 })();
+
+
+
+

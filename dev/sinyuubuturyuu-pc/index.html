@@ -7,7 +7,7 @@
   <script>
     (function () {
       const versionSync = window.SinyuubuturyuuPcVersion || null;
-      const version = versionSync ? versionSync.ensureLatestVersion("20260330a") : "20260330a";
+      const version = versionSync ? versionSync.ensureLatestVersion("20260330e") : "20260330e";
       if (!version) return;
       window.__SINYUUBUTURYUU_PC_VERSION__ = version;
     })();
@@ -18,11 +18,11 @@
   <link rel="apple-touch-icon" href="./icons/icon-sinyuubuturyuu-pc.png">
   <link rel="manifest" href="./manifest.webmanifest?v=20260330a">
   <meta name="theme-color" content="#ffffff">
-  <link rel="stylesheet" href="./shell.css?v=20260330a">
+  <link rel="stylesheet" href="./shell.css?v=20260330e">
 </head>
 <body class="shell-body">
   <main class="shell-page">
-    <section class="shell-card home-card">
+    <section id="launcherCard" class="shell-card home-card" hidden>
       <img
         class="shell-logo"
         src="./icons/icon-sinyuubuturyuu-pc.png"
@@ -30,6 +30,7 @@
       >
       <div class="shell-copy">
         <h1>シンユウ物流パソコン用</h1>
+        <p id="signedInUser" class="lead"></p>
       </div>
 
       <nav class="home-actions" aria-label="アプリ選択">
@@ -38,25 +39,35 @@
         <a id="driverPointsButton" class="action-button primary" href="./driver-points-kanri/index.html">ポイント管理</a>
         <a class="action-button secondary" href="./settings.html">設定</a>
       </nav>
+
+      <div class="button-row auth-button-row">
+        <button id="logoutButton" class="mini-button secondary" type="button">ログアウト</button>
+      </div>
     </section>
   </main>
 
   <script src="./launcher-window.js?v=20260330a"></script>
+  <script src="./getujitiretenkenhyou-pc/firebase/firebase-config.js?v=20260330a"></script>
+  <script src="./auth/firebase-auth.js?v=20260330b"></script>
   <script>
     (function () {
       const versionSync = window.SinyuubuturyuuPcVersion || null;
       const version = window.__SINYUUBUTURYUU_PC_VERSION__
-        || (versionSync ? versionSync.getVersion("20260330a") : "20260330a");
+        || (versionSync ? versionSync.getVersion("20260330e") : "20260330e");
+      const launcherCard = document.getElementById("launcherCard");
+      const signedInUser = document.getElementById("signedInUser");
+      const logoutButton = document.getElementById("logoutButton");
       const tireInspectionButton = document.getElementById("tireInspectionButton");
       const dailyInspectionButton = document.getElementById("dailyInspectionButton");
       const driverPointsButton = document.getElementById("driverPointsButton");
       const settingsButton = document.querySelector(".action-button.secondary");
+      const params = new URLSearchParams(window.location.search);
+      const returnTo = params.get("returnTo") || "";
 
       setVersionedHref(tireInspectionButton, "./getujitiretenkenhyou-pc/index.html");
       setVersionedHref(dailyInspectionButton, "./getujinitijyoutenkenhyou-pc/index.html");
       setVersionedHref(driverPointsButton, "./driver-points-kanri/index.html");
       setVersionedHref(settingsButton, "./settings.html");
-
       registerInstallServiceWorker();
 
       if (window.launcherWindow) {
@@ -87,6 +98,34 @@
         }
         element.href = path + "?v=" + version;
       }
+
+      logoutButton.addEventListener("click", async function () {
+        logoutButton.disabled = true;
+        try {
+          await window.DevPcFirebaseAuth.signOut();
+        } catch (error) {
+          console.warn("Failed to sign out:", error);
+        }
+        window.location.replace("./login.html");
+      });
+
+      (async function () {
+        try {
+          const user = await window.DevPcFirebaseAuth.getCurrentUser();
+          if (!user) {
+            const loginUrl = window.DevPcFirebaseAuth.buildLoginUrl("./login.html", returnTo || "index.html");
+            window.location.replace(loginUrl);
+            return;
+          }
+
+          signedInUser.textContent = user.email ? "ログイン中: " + user.email : "";
+          launcherCard.hidden = false;
+        } catch (error) {
+          console.error(error);
+          const loginUrl = window.DevPcFirebaseAuth.buildLoginUrl("./login.html", returnTo || "index.html");
+          window.location.replace(loginUrl);
+        }
+      })();
     })();
   </script>
 </body>

@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #ffffff;
   --bg-accent: #f6f8fb;
   --text: #18212b;
@@ -432,4 +432,100 @@ body {
   .settings-section {
     padding: 16px;
   }
+}
+
+.auth-panel {
+  margin-top: 28px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(23, 105, 210, 0.05), rgba(23, 105, 210, 0.01));
+  text-align: left;
+}
+
+.auth-copy {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.6;
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-form .field {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+
+.auth-form input {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  font: inherit;
+  color: var(--text);
+  background: var(--card);
+}
+
+.auth-status {
+  min-height: 1.5em;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.auth-status.error {
+  color: #c62828;
+}
+
+.auth-user-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 28px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--bg-accent);
+  text-align: left;
+}
+
+.auth-user-label {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.auth-user-email {
+  margin: 0;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+@media (max-width: 720px) {
+  .auth-user-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .auth-user-row .mini-button {
+    width: 100%;
+  }
+}
+
+.auth-loading {
+  margin-top: 28px;
+  text-align: center;
+}
+
+body.auth-pending .launcher-card {
+  visibility: hidden;
 }

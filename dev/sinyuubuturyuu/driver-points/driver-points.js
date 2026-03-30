@@ -1,9 +1,8 @@
-(function () {
+﻿(function () {
   "use strict";
 
   const FEATURE_STORAGE_KEY = "driver.points.feature.enabled.v1";
-  const FIREBASE_APP_NAME = "__driver_points__";
-  const STORAGE_TARGET = Object.freeze({
+    const STORAGE_TARGET = Object.freeze({
     collection: "driver-points",
     summaryPrefix: "driver_points_summary",
     eventPrefix: "driver_points_event"
@@ -247,18 +246,22 @@
     }
 
     runtimeState.promise = (async () => {
-      const [{ getApps, initializeApp }, { getAuth, signInAnonymously }, firestoreModule] = await Promise.all([
+            const [{ getApp, getApps, initializeApp }, authModule, firestoreModule] = await Promise.all([
         import("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js"),
         import("https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js"),
         import("https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js")
       ]);
 
-      const existingApp = getApps().find((app) => app.name === FIREBASE_APP_NAME);
-      const app = existingApp || initializeApp(FIREBASE_CONFIG, FIREBASE_APP_NAME);
-      const auth = getAuth(app);
+      const app = typeof getApps === "function" && getApps().length
+        ? getApp()
+        : initializeApp(FIREBASE_CONFIG);
+      const auth = authModule.getAuth(app);
 
+      if (!auth.currentUser && typeof auth.authStateReady === "function") {
+        await auth.authStateReady();
+      }
       if (!auth.currentUser) {
-        await signInAnonymously(auth);
+        throw new Error("ログインしてください。");
       }
 
       return {
@@ -1000,3 +1003,5 @@
     bootUiWhenReady();
   }
 })();
+
+

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
@@ -12,32 +12,63 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./sinyuubuturyuu-icon.png" type="image/png">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
-  <link rel="stylesheet" href="./launcher.css?v=20260330b">
+  <link rel="stylesheet" href="./launcher.css?v=20260330c">
 </head>
 <body>
   <main class="launcher">
     <section class="launcher-card" aria-label="アプリ選択">
       <img class="launcher-logo" src="./sinyuubuturyuu-icon.png" alt="シンユウ物流アプリアイコン">
       <h1>シンユウ物流アプリ</h1>
-      <div class="button-group">
-        <button id="app1Button" class="launcher-button primary" type="button"></button>
-        <button id="app2Button" class="launcher-button primary" type="button"></button>
-        <section class="current-selection" aria-label="現在の設定">
-          <div class="current-selection-row">
-            <span class="current-selection-label">車両番号</span>
-            <span id="currentVehicleNumber" class="current-selection-value"></span>
+
+      <section id="authLoading" class="auth-panel auth-loading" aria-label="認証確認中">
+        <p class="auth-copy">ログイン状態を確認しています。</p>
+      </section>
+
+      <section id="loginPanel" class="auth-panel" aria-label="ログイン" hidden>
+        <p class="auth-copy">メールアドレスとパスワードでログインしてください。</p>
+        <form id="loginForm" class="auth-form">
+          <label class="field">
+            <span>メールアドレス</span>
+            <input id="loginEmail" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com" required>
+          </label>
+          <label class="field">
+            <span>パスワード</span>
+            <input id="loginPassword" type="password" autocomplete="current-password" placeholder="パスワード" required>
+          </label>
+          <button id="loginButton" class="launcher-button primary" type="submit">ログイン</button>
+        </form>
+        <p id="authStatus" class="auth-status" aria-live="polite"></p>
+      </section>
+
+      <section id="launcherApp" hidden>
+        <div class="auth-user-row">
+          <div>
+            <p class="auth-user-label">ログイン中</p>
+            <p id="authUserEmail" class="auth-user-email"></p>
           </div>
-          <div class="current-selection-row">
-            <span class="current-selection-label">乗務員名</span>
-            <span id="currentDriverName" class="current-selection-value"></span>
-          </div>
-          <div class="current-selection-row">
-            <span class="current-selection-label">車種</span>
-            <span id="currentTruckType" class="current-selection-value"></span>
-          </div>
-        </section>
-        <button id="settingsButton" class="launcher-button secondary" type="button">設定</button>
-      </div>
+          <button id="logoutButton" class="mini-button primary" type="button">ログアウト</button>
+        </div>
+
+        <div class="button-group">
+          <button id="app1Button" class="launcher-button primary" type="button"></button>
+          <button id="app2Button" class="launcher-button primary" type="button"></button>
+          <section class="current-selection" aria-label="現在の設定">
+            <div class="current-selection-row">
+              <span class="current-selection-label">車両番号</span>
+              <span id="currentVehicleNumber" class="current-selection-value"></span>
+            </div>
+            <div class="current-selection-row">
+              <span class="current-selection-label">乗務員名</span>
+              <span id="currentDriverName" class="current-selection-value"></span>
+            </div>
+            <div class="current-selection-row">
+              <span class="current-selection-label">車種</span>
+              <span id="currentTruckType" class="current-selection-value"></span>
+            </div>
+          </section>
+          <button id="settingsButton" class="launcher-button secondary" type="button">設定</button>
+        </div>
+      </section>
     </section>
   </main>
 
@@ -106,6 +137,8 @@
   <script src="./driver-points/driver-points.js?v=20260322-1"></script>
   <script src="./getujitiretenkenhyou/firebase/firebase-config.js?v=20260322-1"></script>
   <script src="./getujitiretenkenhyou/firebase/firebase-cloud-sync.js?v=20260322-1"></script>
-  <script src="./launcher.js?v=20260330b"></script>
+  <script src="./auth/firebase-auth.js?v=20260330a"></script>
+  <script src="./launcher.js?v=20260330c"></script>
 </body>
 </html>
+

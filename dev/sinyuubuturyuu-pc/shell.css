@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #eef3f8;
   --bg-accent: #dbe7f1;
   --card: rgba(255, 255, 255, 0.96);
@@ -373,4 +373,33 @@ body {
   .value-delete-button {
     width: 100%;
   }
+}
+
+.auth-card {
+  width: min(100%, 520px);
+  padding: 24px;
+  display: grid;
+  gap: 18px;
+}
+
+.auth-loading,
+.auth-panel {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.auth-loading {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.auth-form {
+  display: grid;
+  gap: 16px;
+}
+
+.auth-button-row {
+  justify-content: flex-start;
 }

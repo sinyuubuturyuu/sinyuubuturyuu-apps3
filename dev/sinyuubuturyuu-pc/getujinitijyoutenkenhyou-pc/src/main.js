@@ -1,5 +1,5 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+﻿import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import { getAuth, onAuthStateChanged, updateCurrentUser } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   collection,
   doc,
@@ -434,20 +434,65 @@ function buildReferenceDocPath(referenceDoc) {
   return `${referenceDoc.collection}/${referenceDoc.id}`;
 }
 
-async function ensureReferenceAuth() {
-  if (referenceAuth.currentUser) {
-    return referenceAuth.currentUser;
+async function waitForAuthUser(targetAuth, waitMs = 5000) {
+  if (targetAuth.currentUser) {
+    return targetAuth.currentUser;
   }
-  const credential = await signInAnonymously(referenceAuth);
-  return credential.user;
+
+  if (typeof targetAuth.authStateReady === "function") {
+    await Promise.race([
+      targetAuth.authStateReady(),
+      new Promise((resolve) => window.setTimeout(resolve, waitMs))
+    ]);
+    return targetAuth.currentUser || null;
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let unsubscribe = () => {};
+    const finish = (user) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      unsubscribe();
+      resolve(user || null);
+    };
+
+    unsubscribe = onAuthStateChanged(targetAuth, (user) => finish(user), () => finish(null));
+    window.setTimeout(() => finish(targetAuth.currentUser || null), waitMs);
+  });
+}
+
+async function ensureReferenceAuth() {
+  let user = await waitForAuthUser(referenceAuth);
+  if (user) {
+    return user;
+  }
+
+  const appUser = await waitForAuthUser(auth);
+  if (appUser) {
+    try {
+      await updateCurrentUser(referenceAuth, appUser);
+    } catch (error) {
+      console.warn("Failed to reuse existing Firebase login:", error);
+    }
+    user = await waitForAuthUser(referenceAuth);
+  }
+
+  if (!user) {
+    throw new Error("ログインしてください。");
+  }
+
+  return user;
 }
 
 async function ensureAppAuth() {
-  if (auth.currentUser) {
-    return auth.currentUser;
+  const user = await waitForAuthUser(auth);
+  if (!user) {
+    throw new Error("ログインしてください。");
   }
-  const credential = await signInAnonymously(auth);
-  return credential.user;
+  return user;
 }
 
 function setSelectOptions(selectEl, options, placeholder, selectedValue = "") {
@@ -2521,3 +2566,6 @@ renderBody();
 renderBottomStampRow();
 syncToolbarWidth();
 loadReferenceOptions().catch((err) => setStatus(`候補一覧の取得に失敗しました: ${err.message}`, true));
+
+
+

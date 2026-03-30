@@ -1,4 +1,4 @@
-    (() => {
+﻿    (() => {
       "use strict";
 
       const STORAGE = {
@@ -2452,13 +2452,25 @@
         }
       }
 
+      async function requireAppLogin() {
+        const authApi = window.DevFirebaseAuth;
+        if (!authApi || typeof authApi.requireUser !== "function") {
+          throw new Error("認証モジュールの読み込みに失敗しました。");
+        }
+        return authApi.requireUser({
+          redirectTo: "../index.html?returnTo=getujitiretenkenhyou/index.html"
+        });
+      }
+
       function canRegisterServiceWorker() {
         if (!("serviceWorker" in navigator)) return false;
         if (!window.isSecureContext) return false;
         return window.location.protocol === "http:" || window.location.protocol === "https:";
       }
 
-      function init() {
+      async function init() {
+        const user = await requireAppLogin();
+        if (!user) return;
         if (window.FirebaseCloudSync && typeof window.FirebaseCloudSync.init === "function") {
           void (async () => {
             await window.FirebaseCloudSync.init({
@@ -2487,5 +2499,9 @@
         registerSW();
       }
 
-      init();
+      init().catch((error) => {
+        console.error(error);
+        window.alert(`初期化に失敗しました: ${error.message}`);
+      });
     })();
+

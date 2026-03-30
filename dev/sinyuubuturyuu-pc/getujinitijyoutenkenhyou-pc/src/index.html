@@ -7,7 +7,7 @@
   <script>
     (function () {
       const versionSync = window.SinyuubuturyuuPcVersion || null;
-      const version = versionSync ? versionSync.ensureLatestVersion("20260330a") : "20260330a";
+      const version = versionSync ? versionSync.ensureLatestVersion("20260330e") : "20260330e";
       if (!version) return;
       window.__SINYUUBUTURYUU_PC_VERSION__ = version;
     })();
@@ -105,7 +105,7 @@
     </section>
   </div>
 
-  <script src="../../launcher-window.js?v=20260330a"></script>
+  <script src="../../launcher-window.js?v=20260330b"></script>
   <script>
     (function () {
       if (window.launcherWindow) {
@@ -115,6 +115,25 @@
     })();
   </script>
   <script src="../../shared-settings.js?v=20260330a"></script>
-  <script type="module" src="./main.js?v=20260330a"></script>
+  <script src="../../getujitiretenkenhyou-pc/firebase/firebase-config.js?v=20260330a"></script>
+  <script src="../../auth/firebase-auth.js?v=20260330b"></script>
+  <script type="module">
+    const statusElement = document.getElementById("status");
+    if (statusElement) {
+      statusElement.textContent = "読み込み中...";
+    }
+
+    try {
+      const user = await window.DevPcFirebaseAuth.requireUser({ loginPath: "../../login.html" });
+      if (user) {
+        await import("./main.js?v=20260330e");
+      }
+    } catch (error) {
+      console.error(error);
+      if (statusElement) {
+        statusElement.textContent = "認証の確認に失敗しました。";
+      }
+    }
+  </script>
 </body>
 </html>

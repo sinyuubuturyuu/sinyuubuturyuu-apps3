@@ -1,0 +1,128 @@
+﻿<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="./version-sync.js"></script>
+  <script>
+    (function () {
+      const versionSync = window.SinyuubuturyuuPcVersion || null;
+      const version = versionSync ? versionSync.ensureLatestVersion("20260330b") : "20260330b";
+      if (!version) return;
+      window.__SINYUUBUTURYUU_PC_VERSION__ = version;
+    })();
+  </script>
+  <title>ログイン | シンユウ物流パソコン用</title>
+  <meta name="description" content="シンユウ物流パソコン用アプリのログイン画面">
+  <link rel="icon" href="./icons/icon-sinyuubuturyuu-pc.png" type="image/png">
+  <link rel="apple-touch-icon" href="./icons/icon-sinyuubuturyuu-pc.png">
+  <link rel="stylesheet" href="./shell.css?v=20260330b">
+</head>
+<body class="shell-body">
+  <main class="shell-page">
+    <section class="shell-card auth-card">
+      <div class="settings-topbar">
+        <a class="back-link" href="./index.html">トップへ戻る</a>
+        <h1>ログイン</h1>
+      </div>
+
+      <p class="lead">シンユウ物流パソコン用の各アプリを使うにはログインしてください。</p>
+
+      <section id="authLoading" class="auth-loading" aria-live="polite">
+        ログイン状態を確認しています。
+      </section>
+
+      <section id="loginPanel" class="auth-panel" hidden>
+        <form id="loginForm" class="auth-form">
+          <label class="field">
+            <span>メールアドレス</span>
+            <input id="loginEmail" type="email" autocomplete="username" required>
+          </label>
+
+          <label class="field">
+            <span>パスワード</span>
+            <input id="loginPassword" type="password" autocomplete="current-password" required>
+          </label>
+
+          <div class="button-row auth-button-row">
+            <button id="loginButton" class="mini-button primary" type="submit">ログイン</button>
+          </div>
+
+          <p id="authStatus" class="global-status" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+    </section>
+  </main>
+
+  <script src="./getujitiretenkenhyou-pc/firebase/firebase-config.js?v=20260330b"></script>
+  <script src="./auth/firebase-auth.js?v=20260330b"></script>
+  <script>
+    (function () {
+      const authLoading = document.getElementById("authLoading");
+      const loginPanel = document.getElementById("loginPanel");
+      const loginForm = document.getElementById("loginForm");
+      const loginEmail = document.getElementById("loginEmail");
+      const loginPassword = document.getElementById("loginPassword");
+      const loginButton = document.getElementById("loginButton");
+      const authStatus = document.getElementById("authStatus");
+      const params = new URLSearchParams(window.location.search);
+      const returnTo = params.get("returnTo") || "index.html";
+
+      function formatError(error) {
+        if (!error) {
+          return "unknown_error";
+        }
+        if (error.code) {
+          return String(error.code);
+        }
+        if (error.message) {
+          return String(error.message);
+        }
+        return String(error);
+      }
+
+      function setStatus(message, isError) {
+        authStatus.textContent = message || "";
+        authStatus.dataset.state = isError ? "error" : "info";
+      }
+
+      async function initialize() {
+        try {
+          const user = await window.DevPcFirebaseAuth.getCurrentUser();
+          if (user) {
+            setStatus("ログイン済みです。移動しています。", false);
+            window.location.replace(window.DevPcFirebaseAuth.buildReturnUrl(returnTo));
+            return;
+          }
+        } catch (error) {
+          console.error(error);
+          setStatus("認証状態の確認に失敗しました: " + formatError(error), true);
+        }
+
+        authLoading.hidden = true;
+        loginPanel.hidden = false;
+        loginEmail.focus();
+      }
+
+      loginForm.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        loginButton.disabled = true;
+        setStatus("ログインしています...", false);
+
+        try {
+          await window.DevPcFirebaseAuth.signIn(loginEmail.value, loginPassword.value);
+          window.location.replace(window.DevPcFirebaseAuth.buildReturnUrl(returnTo));
+        } catch (error) {
+          console.error(error);
+          setStatus("ログインに失敗しました: " + formatError(error), true);
+          loginButton.disabled = false;
+          loginPassword.focus();
+          loginPassword.select();
+        }
+      });
+
+      void initialize();
+    })();
+  </script>
+</body>
+</html>

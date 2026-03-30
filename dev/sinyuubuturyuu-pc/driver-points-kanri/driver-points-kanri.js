@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   "use strict";
 
   const sharedSettings = window.SharedAppSettings || null;
@@ -23,7 +23,6 @@
   const elements = {
     vehicleSelect: document.getElementById("vehicleSelect"),
     driverSelect: document.getElementById("driverSelect"),
-    reloadButton: document.getElementById("reloadButton"),
     saveButton: document.getElementById("saveButton"),
     openLeaderboardButton: document.getElementById("openLeaderboardButton"),
     closeLeaderboardButton: document.getElementById("closeLeaderboardButton"),
@@ -46,8 +45,89 @@
     leaderboardRows: [],
     loadingPoints: false,
     savingPoints: false,
-    loadingLeaderboard: false
+    loadingLeaderboard: false,
+    latestPointsRequestId: 0
   };
+
+  function timeoutAfter(ms) {
+    if (!Number.isFinite(ms) || ms <= 0) {
+      return null;
+    }
+    return new Promise(function (resolve) {
+      window.setTimeout(resolve, ms);
+    });
+  }
+
+  async function waitForCompatUser(auth, waitMs = 5000) {
+    if (auth.currentUser) {
+      return auth.currentUser;
+    }
+
+    return new Promise(function (resolve) {
+      let settled = false;
+      let unsubscribe = function () {};
+      const finish = function (user) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        unsubscribe();
+        resolve(user || null);
+      };
+
+      unsubscribe = auth.onAuthStateChanged(function (user) {
+        finish(user);
+      }, function () {
+        finish(null);
+      });
+
+      const timer = timeoutAfter(waitMs);
+      if (timer) {
+        timer.then(function () {
+          finish(auth.currentUser || null);
+        });
+      }
+    });
+  }
+
+  function getDefaultCompatAuth() {
+    if (!window.firebase || !Array.isArray(window.firebase.apps)) {
+      return null;
+    }
+
+    const defaultApp = window.firebase.apps.find(function (app) {
+      return app.name === "[DEFAULT]";
+    }) || (window.firebase.apps.length ? window.firebase.apps[0] : null);
+    if (!defaultApp || typeof defaultApp.auth !== "function") {
+      return null;
+    }
+
+    return defaultApp.auth();
+  }
+
+  async function ensureSignedInCompatAuth(auth) {
+    let user = auth.currentUser || await waitForCompatUser(auth);
+    if (user) {
+      return user;
+    }
+
+    const defaultAuth = getDefaultCompatAuth();
+    const defaultUser = defaultAuth ? (defaultAuth.currentUser || await waitForCompatUser(defaultAuth)) : null;
+    if (defaultUser && typeof auth.updateCurrentUser === "function") {
+      try {
+        await auth.updateCurrentUser(defaultUser);
+      } catch (error) {
+        console.warn("Failed to reuse existing Firebase login:", error);
+      }
+      user = auth.currentUser || await waitForCompatUser(auth);
+    }
+
+    if (!user) {
+      throw new Error("ログインしてください。");
+    }
+
+    return user;
+  }
 
   bindEvents();
   void initialize();
@@ -59,10 +139,6 @@
 
     elements.driverSelect.addEventListener("change", function () {
       void loadPointsForCurrentSelection();
-    });
-
-    elements.reloadButton.addEventListener("click", function () {
-      void loadPointsForCurrentSelection(true);
     });
 
     elements.saveButton.addEventListener("click", function () {
@@ -104,9 +180,12 @@
       state.optionSourceReady = true;
 
       if (state.vehicleOptions.length && state.driverOptions.length) {
-        elements.vehicleSelect.value = state.vehicleOptions[0].value;
-        elements.driverSelect.value = state.driverOptions[0].value;
-        await loadPointsForCurrentSelection();
+        elements.vehicleSelect.value = "";
+        elements.driverSelect.value = "";
+        elements.pointsValue.textContent = "--";
+        elements.pointsInput.value = "";
+        elements.pointsMeta.textContent = "車番と乗務員を選択してください。";
+        setStatus("車番と乗務員を選択してください。");
       } else {
         setStatus("車番または乗務員の候補がまだありません。設定画面で登録してください。", true);
       }
@@ -157,14 +236,7 @@
   async function ensureDb(config, settings, appName) {
     const app = getOrCreateFirebaseApp(config, appName);
     const auth = app.auth();
-
-    if (settings.useAnonymousAuth !== false && !auth.currentUser) {
-      try {
-        await auth.signInAnonymously();
-      } catch (error) {
-        console.warn("Anonymous auth was not available:", error);
-      }
-    }
+    await ensureSignedInCompatAuth(auth);
 
     return app.firestore();
   }
@@ -275,6 +347,8 @@
   async function loadPointsForCurrentSelection(forceReloadSchema) {
     const vehicle = normalizeText(elements.vehicleSelect.value);
     const driverOption = getSelectedDriverOption();
+    const requestId = state.latestPointsRequestId + 1;
+    state.latestPointsRequestId = requestId;
 
     state.currentRecord = null;
     elements.pointsMeta.textContent = "ポイントを検索しています...";
@@ -301,6 +375,10 @@
       const schema = await resolveSchema(forceReloadSchema === true);
       const record = await findPointRecord(schema, vehicle, driverOption);
 
+      if (requestId !== state.latestPointsRequestId) {
+        return;
+      }
+
       state.activeSchema = schema;
       state.currentRecord = record;
 
@@ -318,12 +396,17 @@
       elements.pointsMeta.textContent = "";
       setStatus("ポイントを読み込みました。");
     } catch (error) {
+      if (requestId !== state.latestPointsRequestId) {
+        return;
+      }
       console.warn("Failed to load points:", error);
       elements.pointsMeta.textContent = "ポイントの読み込みに失敗しました。";
       setStatus("ポイントの読み込みに失敗しました: " + formatError(error), true);
     } finally {
-      state.loadingPoints = false;
-      syncButtons();
+      if (requestId === state.latestPointsRequestId) {
+        state.loadingPoints = false;
+        syncButtons();
+      }
     }
   }
 
@@ -1181,7 +1264,6 @@
 
   function syncButtons() {
     const hasSelection = Boolean(normalizeText(elements.vehicleSelect.value) && getSelectedDriverOption());
-    elements.reloadButton.disabled = !hasSelection || state.loadingPoints || !state.optionSourceReady;
     elements.saveButton.disabled = !hasSelection || state.loadingPoints || state.savingPoints || !state.pointsDb;
     elements.openLeaderboardButton.disabled = state.loadingLeaderboard || !state.pointsDb;
   }
@@ -1215,3 +1297,14 @@
     return docRef.get(SERVER_GET_OPTIONS);
   }
 })();
+
+
+
+
+
+
+
+
+
+
+

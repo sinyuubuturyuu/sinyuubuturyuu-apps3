@@ -7,7 +7,7 @@
   <script>
     (function () {
       const versionSync = window.SinyuubuturyuuPcVersion || null;
-      const version = versionSync ? versionSync.ensureLatestVersion("20260330a") : "20260330a";
+      const version = versionSync ? versionSync.ensureLatestVersion("20260330e") : "20260330e";
       if (!version) return;
       window.__SINYUUBUTURYUU_PC_VERSION__ = version;
     })();
@@ -18,7 +18,7 @@
   <title>シンユウ物流パソコン用</title>
   <link rel="icon" type="image/png" href="../icons/icon-sinyuubuturyuu-pc.png">
   <link rel="apple-touch-icon" href="../icons/icon-sinyuubuturyuu-pc.png">
-  <link rel="stylesheet" href="./admin.css?v=20260330a">
+  <link rel="stylesheet" href="./admin.css?v=20260330e">
   <script>
     (function () {
       if (!("serviceWorker" in navigator)) return;
@@ -202,7 +202,7 @@
     </section>
   </div>
 
-  <script src="../launcher-window.js?v=20260330a"></script>
+  <script src="../launcher-window.js?v=20260330b"></script>
   <script>
     (function () {
       if (window.launcherWindow) {
@@ -212,11 +212,48 @@
     })();
   </script>
   <script src="./firebase/firebase-config.js?v=20260330a"></script>
+  <script src="../auth/firebase-auth.js?v=20260330b"></script>
   <script src="../shared-settings.js?v=20260330a"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./admin.js?v=20260330a"></script>
+  <script>
+    (function () {
+      const version = window.__SINYUUBUTURYUU_PC_VERSION__ || "20260330e";
+      const statusText = document.getElementById("statusText");
+      const errorText = document.getElementById("errorText");
+
+      if (window.APP_FIREBASE_SYNC_OPTIONS) {
+        window.APP_FIREBASE_SYNC_OPTIONS.useAnonymousAuth = false;
+      }
+      if (window.APP_FIREBASE_DIRECTORY_SYNC_OPTIONS) {
+        window.APP_FIREBASE_DIRECTORY_SYNC_OPTIONS.useAnonymousAuth = false;
+      }
+
+      (async function () {
+        try {
+          const user = await window.DevPcFirebaseAuth.requireUser({ loginPath: "../login.html" });
+          if (!user) {
+            return;
+          }
+          if (statusText) {
+            statusText.textContent = "読み込み中...";
+          }
+          const script = document.createElement("script");
+          script.src = "./admin.js?v=" + version;
+          script.async = false;
+          document.body.appendChild(script);
+        } catch (error) {
+          console.error(error);
+          if (statusText) {
+            statusText.textContent = "";
+          }
+          if (errorText) {
+            errorText.textContent = "認証の確認に失敗しました。";
+          }
+        }
+      })();
+    })();
+  </script>
 </body>
 </html>
-

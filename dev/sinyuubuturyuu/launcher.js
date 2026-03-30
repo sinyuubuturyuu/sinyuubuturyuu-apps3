@@ -1,4 +1,4 @@
-const APP_CONFIG = {
+﻿const APP_CONFIG = {
   app1Name: "月次タイヤ点検表",
   app1Path: "./getujitiretenkenhyou/index.html",
   app2Name: "月次日常点検表",
@@ -100,6 +100,16 @@ const elements = {
   settingsStatus: document.getElementById("settingsStatus"),
   sendFarewell: document.getElementById("sendFarewell"),
   sendFarewellImage: document.getElementById("sendFarewellImage"),
+  authLoading: document.getElementById("authLoading"),
+  loginPanel: document.getElementById("loginPanel"),
+  launcherApp: document.getElementById("launcherApp"),
+  loginForm: document.getElementById("loginForm"),
+  loginEmail: document.getElementById("loginEmail"),
+  loginPassword: document.getElementById("loginPassword"),
+  loginButton: document.getElementById("loginButton"),
+  authStatus: document.getElementById("authStatus"),
+  authUserEmail: document.getElementById("authUserEmail"),
+  logoutButton: document.getElementById("logoutButton"),
 };
 const state = {
   shared: sharedSettings.ensureState(),
@@ -111,11 +121,18 @@ const state = {
   },
   monthlyLaunchBusy: false,
   dailyLaunchBusy: false,
+  auth: {
+    ready: false,
+    user: null,
+    busy: false,
+    returnTo: getRequestedReturnTo(),
+    redirected: false,
+  },
 };
 renderAll();
 bindEvents();
 registerServiceWorker();
-void initializeCloudSync();
+void initializeAuth();
 
 function refreshSharedState() {
   state.shared = sharedSettings.ensureState();
@@ -124,9 +141,180 @@ function refreshSharedState() {
 function renderAll() {
   refreshSharedState();
   applyTheme();
+  renderAuth();
   renderLauncherButtons();
   renderCurrentSelection();
   renderSettings();
+}
+
+function renderAuth() {
+  const user = state.auth.user;
+  const ready = state.auth.ready;
+  const busy = state.auth.busy;
+  const pending = !ready && !user;
+
+  document.body.classList.toggle("auth-pending", pending);
+  elements.authLoading.hidden = true;
+  elements.loginPanel.hidden = !ready || Boolean(user);
+  elements.launcherApp.hidden = !ready || !user;
+  elements.loginButton.disabled = busy || !ready;
+  elements.loginEmail.disabled = busy || !ready;
+  elements.loginPassword.disabled = busy || !ready;
+  elements.logoutButton.disabled = busy || !user;
+  elements.authUserEmail.textContent = user && user.email ? user.email : "";
+
+  if (!ready) {
+    setAuthStatus("");
+  }
+}
+
+function setAuthStatus(message, isError = false) {
+  elements.authStatus.textContent = message || "";
+  elements.authStatus.classList.toggle("error", Boolean(isError));
+}
+
+function getRequestedReturnTo() {
+  const params = new URLSearchParams(window.location.search);
+  const raw = String(params.get("returnTo") || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  try {
+    const resolved = new URL(raw, window.location.href);
+    const launcherRoot = new URL("./", window.location.href);
+    if (resolved.origin !== window.location.origin) {
+      return "";
+    }
+    if (!resolved.pathname.startsWith(launcherRoot.pathname)) {
+      return "";
+    }
+    return resolved.href;
+  } catch {
+    return "";
+  }
+}
+
+async function redirectToReturnTarget() {
+  if (!state.auth.user || !state.auth.returnTo || state.auth.redirected) {
+    return;
+  }
+
+  state.auth.redirected = true;
+  window.location.replace(state.auth.returnTo);
+}
+
+async function initializeAuth() {
+  const authApi = window.DevFirebaseAuth;
+  if (!authApi || typeof authApi.onChange !== "function") {
+    state.auth.ready = true;
+    setAuthStatus("認証モジュールの読み込みに失敗しました。", true);
+    renderAll();
+    return;
+  }
+
+  try {
+    if (typeof authApi.ensureRuntime === "function") {
+      const runtime = await authApi.ensureRuntime();
+      const immediateUser = runtime && runtime.auth ? (runtime.auth.currentUser || null) : null;
+      if (immediateUser) {
+        state.auth.ready = true;
+        state.auth.user = immediateUser;
+        state.auth.busy = false;
+        setAuthStatus("");
+        renderAll();
+      }
+    }
+
+    await authApi.onChange(async (user) => {
+      state.auth.ready = true;
+      state.auth.user = user || null;
+      state.auth.busy = false;
+
+      if (!user && elements.settingsDialog.open) {
+        closeSettingsDialog();
+      }
+
+      if (user) {
+        setAuthStatus("");
+        if (!state.cloudReady) {
+          await initializeCloudSync();
+        }
+        renderAll();
+        await redirectToReturnTarget();
+        return;
+      }
+
+      state.cloudReady = false;
+      renderAll();
+    });
+  } catch (error) {
+    state.auth.ready = true;
+    state.auth.busy = false;
+    setAuthStatus(`認証の初期化に失敗しました: ${error.message}`, true);
+    renderAll();
+  }
+}
+
+async function handleLoginSubmit() {
+  const authApi = window.DevFirebaseAuth;
+  if (!authApi || typeof authApi.signIn !== "function") {
+    setAuthStatus("認証モジュールの読み込みに失敗しました。", true);
+    return;
+  }
+
+  const email = String(elements.loginEmail.value || "").trim();
+  const password = String(elements.loginPassword.value || "");
+  if (!email || !password) {
+    setAuthStatus("メールアドレスとパスワードを入力してください。", true);
+    return;
+  }
+
+  state.auth.busy = true;
+  setAuthStatus("ログインしています。", false);
+  renderAll();
+
+  try {
+    await authApi.signIn(email, password);
+    elements.loginPassword.value = "";
+  } catch (error) {
+    state.auth.busy = false;
+    setAuthStatus(`ログインに失敗しました: ${error.message}`, true);
+    renderAll();
+  }
+}
+
+async function handleLogout() {
+  const authApi = window.DevFirebaseAuth;
+  if (!authApi || typeof authApi.signOut !== "function") {
+    setAuthStatus("認証モジュールの読み込みに失敗しました。", true);
+    return;
+  }
+
+  state.auth.busy = true;
+  setAuthStatus("ログアウトしています。", false);
+  renderAll();
+
+  try {
+    await authApi.signOut();
+  } catch (error) {
+    state.auth.busy = false;
+    setAuthStatus(`ログアウトに失敗しました: ${error.message}`, true);
+    renderAll();
+  }
+}
+
+async function requireSignedInUser() {
+  const authApi = window.DevFirebaseAuth;
+  if (!authApi || typeof authApi.getCurrentUser !== "function") {
+    throw new Error("認証モジュールを読み込めませんでした。");
+  }
+
+  const user = await authApi.getCurrentUser();
+  if (!user) {
+    throw new Error("ログインしてください。");
+  }
+  return user;
 }
 
 function renderLauncherButtons() {
@@ -390,11 +578,9 @@ async function getReferenceSettingsRuntime() {
       import("https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js"),
     ]);
 
-    const appName = "__launcher_reference_settings__";
-    const existingApp = typeof appModule.getApps === "function"
-      ? appModule.getApps().find((app) => app.name === appName)
-      : null;
-    const app = existingApp || appModule.initializeApp(REFERENCE_FIREBASE_CONFIG, appName);
+    const app = typeof appModule.getApps === "function" && appModule.getApps().length
+      ? appModule.getApp()
+      : appModule.initializeApp(REFERENCE_FIREBASE_CONFIG);
 
     return {
       auth: authModule.getAuth(app),
@@ -411,11 +597,17 @@ async function getReferenceSettingsRuntime() {
 }
 
 async function ensureReferenceSettingsAuth(runtime) {
+  await requireSignedInUser();
   if (runtime.auth.currentUser) {
     return runtime.auth.currentUser;
   }
-  const credential = await runtime.authModule.signInAnonymously(runtime.auth);
-  return credential.user;
+  if (typeof runtime.auth.authStateReady === "function") {
+    await runtime.auth.authStateReady();
+  }
+  if (runtime.auth.currentUser) {
+    return runtime.auth.currentUser;
+  }
+  throw new Error("ログイン状態を確認できませんでした。");
 }
 
 async function loadSyainmeiboReferenceOptions(runtime) {
@@ -538,6 +730,13 @@ async function refreshReferenceOptions() {
   }
 }
 function bindEvents() {
+  elements.loginForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void handleLoginSubmit();
+  });
+  elements.logoutButton.addEventListener("click", () => {
+    void handleLogout();
+  });
   elements.app1Button.addEventListener("click", () => {
     void openMonthlyApp();
   });
@@ -704,6 +903,7 @@ async function initializeCloudSync() {
   }
 
   try {
+    await requireSignedInUser();
     await window.FirebaseCloudSync.init({
       getPayload: buildCloudPayload,
     });
@@ -860,6 +1060,7 @@ async function openMonthlyApp() {
   elements.app1Button.disabled = true;
 
   try {
+    await requireSignedInUser();
     if (await shouldShowMonthlyCompleteImage()) {
       await showSendFarewell({
         src: MONTHLY_COMPLETE_IMAGE_SRC,
@@ -1133,20 +1334,23 @@ async function listDailyInspectionRecords(vehicle, driver) {
     return readDailyInspectionLocalStoreRecords(vehicle, driver);
   }
 
-  const [{ getApps, initializeApp }, authModule, firestoreModule] = await Promise.all([
+  await requireSignedInUser();
+
+  const [{ getApp, getApps, initializeApp }, authModule, firestoreModule] = await Promise.all([
     import("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js"),
     import("https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js"),
     import("https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js"),
   ]);
 
-  const appName = "__launcher_daily_inspection__";
-  const existingApp = typeof getApps === "function"
-    ? getApps().find((app) => app.name === appName)
-    : null;
-  const app = existingApp || initializeApp(runtime.firebaseConfig, appName);
+  const app = typeof getApps === "function" && getApps().length
+    ? getApp()
+    : initializeApp(runtime.firebaseConfig);
   const auth = authModule.getAuth(app);
+  if (!auth.currentUser && typeof auth.authStateReady === "function") {
+    await auth.authStateReady();
+  }
   if (!auth.currentUser) {
-    await authModule.signInAnonymously(auth);
+    throw new Error("ログインしてください。");
   }
   const db = firestoreModule.getFirestore(app);
   const collectionName = String(runtime.appSettings.collectionName || "getujinitijyoutenkenhyou");
@@ -1280,6 +1484,7 @@ async function openDailyInspectionApp() {
   elements.app2Button.disabled = true;
 
   try {
+    await requireSignedInUser();
     if (await shouldShowDailyInspectionCompleteImage()) {
       await showSendFarewell({
         src: DAILY_INSPECTION_COMPLETE_IMAGE_SRC,
@@ -1349,3 +1554,17 @@ function registerServiceWorker() {
       });
   });
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
