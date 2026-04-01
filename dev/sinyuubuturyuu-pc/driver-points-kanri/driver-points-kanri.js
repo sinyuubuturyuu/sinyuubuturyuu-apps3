@@ -90,28 +90,52 @@
     });
   }
 
-  function getDefaultCompatAuth() {
+  function getDefaultCompatApp() {
     if (!window.firebase || !Array.isArray(window.firebase.apps)) {
       return null;
     }
 
-    const defaultApp = window.firebase.apps.find(function (app) {
+    return window.firebase.apps.find(function (app) {
       return app.name === "[DEFAULT]";
-    }) || (window.firebase.apps.length ? window.firebase.apps[0] : null);
-    if (!defaultApp || typeof defaultApp.auth !== "function") {
+    }) || null;
+  }
+
+  function hasSameFirebaseConfig(app, config) {
+    const options = app && app.options ? app.options : {};
+    return ["apiKey", "authDomain", "projectId", "appId"].every(function (key) {
+      return normalizeText(options[key]) === normalizeText(config && config[key]);
+    });
+  }
+
+  function getDefaultCompatAuth(config) {
+    const defaultApp = getDefaultCompatApp();
+    if (!defaultApp || !hasSameFirebaseConfig(defaultApp, config) || typeof defaultApp.auth !== "function") {
       return null;
     }
 
     return defaultApp.auth();
   }
 
-  async function ensureSignedInCompatAuth(auth) {
+  function ensureDefaultCompatApp(config) {
+    const defaultApp = getDefaultCompatApp();
+    if (defaultApp) {
+      return defaultApp;
+    }
+
+    if (!window.firebase || typeof window.firebase.initializeApp !== "function" || !config) {
+      return null;
+    }
+
+    return window.firebase.initializeApp(config);
+  }
+
+  async function ensureSignedInCompatAuth(auth, config) {
     let user = auth.currentUser || await waitForCompatUser(auth);
     if (user) {
       return user;
     }
 
-    const defaultAuth = getDefaultCompatAuth();
+    const defaultAuth = getDefaultCompatAuth(config);
     const defaultUser = defaultAuth ? (defaultAuth.currentUser || await waitForCompatUser(defaultAuth)) : null;
     if (defaultUser && typeof auth.updateCurrentUser === "function") {
       try {
@@ -128,7 +152,6 @@
 
     return user;
   }
-
   bindEvents();
   void initialize();
 
@@ -234,14 +257,20 @@
   }
 
   async function ensureDb(config, settings, appName) {
+    ensureDefaultCompatApp(config);
     const app = getOrCreateFirebaseApp(config, appName);
     const auth = app.auth();
-    await ensureSignedInCompatAuth(auth);
+    await ensureSignedInCompatAuth(auth, config);
 
     return app.firestore();
   }
 
   function getOrCreateFirebaseApp(config, appName) {
+    const defaultApp = getDefaultCompatApp();
+    if (defaultApp && hasSameFirebaseConfig(defaultApp, config)) {
+      return defaultApp;
+    }
+
     const existingApp = window.firebase.apps.find(function (app) {
       return app.name === appName;
     });
@@ -250,7 +279,6 @@
     }
     return window.firebase.initializeApp(config, appName);
   }
-
   function getLocalOptions() {
     if (!sharedSettings || typeof sharedSettings.ensureState !== "function") {
       return {
