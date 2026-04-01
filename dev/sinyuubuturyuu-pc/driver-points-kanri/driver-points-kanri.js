@@ -90,30 +90,19 @@
     });
   }
 
-  function getDefaultCompatApp() {
+  function getDefaultCompatAuth() {
     if (!window.firebase || !Array.isArray(window.firebase.apps)) {
       return null;
     }
 
-    return window.firebase.apps.find(function (app) {
+    const defaultApp = window.firebase.apps.find(function (app) {
       return app.name === "[DEFAULT]";
     }) || (window.firebase.apps.length ? window.firebase.apps[0] : null);
-  }
-
-  function getDefaultCompatAuth() {
-    const defaultApp = getDefaultCompatApp();
     if (!defaultApp || typeof defaultApp.auth !== "function") {
       return null;
     }
 
     return defaultApp.auth();
-  }
-
-  function hasSameFirebaseConfig(app, config) {
-    const options = app && app.options ? app.options : {};
-    return ["apiKey", "authDomain", "projectId", "appId"].every(function (key) {
-      return normalizeText(options[key]) === normalizeText(config && config[key]);
-    });
   }
 
   async function ensureSignedInCompatAuth(auth) {
@@ -131,18 +120,6 @@
         console.warn("Failed to reuse existing Firebase login:", error);
       }
       user = auth.currentUser || await waitForCompatUser(auth);
-    }
-
-    if (!user && window.DevPcFirebaseAuth && typeof window.DevPcFirebaseAuth.getCurrentUser === "function" && typeof auth.updateCurrentUser === "function") {
-      try {
-        const modularUser = await window.DevPcFirebaseAuth.getCurrentUser({ waitMs: 5000 });
-        if (modularUser) {
-          await auth.updateCurrentUser(modularUser);
-          user = auth.currentUser || await waitForCompatUser(auth);
-        }
-      } catch (error) {
-        console.warn("Failed to bridge existing PC Firebase login:", error);
-      }
     }
 
     if (!user) {
@@ -214,7 +191,6 @@
       }
     } catch (error) {
       console.warn("Failed to initialize driver points page:", error);
-      elements.pointsMeta.textContent = "初期化に失敗しました。";
       setStatus("初期化に失敗しました: " + formatError(error), true);
     } finally {
       syncButtons();
@@ -260,26 +236,12 @@
   async function ensureDb(config, settings, appName) {
     const app = getOrCreateFirebaseApp(config, appName);
     const auth = app.auth();
-
-    try {
-      await ensureSignedInCompatAuth(auth);
-    } catch (error) {
-      if (settings && settings.useAnonymousAuth !== false && typeof auth.signInAnonymously === "function") {
-        await auth.signInAnonymously();
-      } else {
-        throw error;
-      }
-    }
+    await ensureSignedInCompatAuth(auth);
 
     return app.firestore();
   }
 
   function getOrCreateFirebaseApp(config, appName) {
-    const defaultApp = getDefaultCompatApp();
-    if (defaultApp && hasSameFirebaseConfig(defaultApp, config)) {
-      return defaultApp;
-    }
-
     const existingApp = window.firebase.apps.find(function (app) {
       return app.name === appName;
     });
@@ -401,7 +363,6 @@
     }
 
     if (!state.pointsDb) {
-      elements.pointsMeta.textContent = "ポイント用 Firebase に接続できていません。";
       setStatus("ポイント用 Firebase に接続できていません。", true);
       syncButtons();
       return;
@@ -790,7 +751,6 @@
     }
 
     if (!state.pointsDb) {
-      elements.pointsMeta.textContent = "ポイント用 Firebase に接続できていません。";
       setStatus("ポイント用 Firebase に接続できていません。", true);
       return;
     }
