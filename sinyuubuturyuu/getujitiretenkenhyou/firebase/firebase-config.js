@@ -24,7 +24,7 @@
     // Company identifier for future access control
     companyCode: "company",
     // Use anonymous auth (no user login UI)
-    useAnonymousAuth: true,
+    useAnonymousAuth: false,
     // Retry flush interval (ms)
     autoFlushIntervalMs: 15000
   };
@@ -47,6 +47,8 @@
       vehicles: "monthly_tire_company_settings_backup_vehicles_slot1",
       drivers: "monthly_tire_company_settings_backup_drivers_slot1"
     },
-    useAnonymousAuth: true
+    useAnonymousAuth: false
   };
 })();
+
+

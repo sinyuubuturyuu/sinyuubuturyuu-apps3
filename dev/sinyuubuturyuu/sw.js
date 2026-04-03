@@ -1,4 +1,4 @@
-const CACHE_NAME = "sinyuubuturyuu-launcher-v20";
+﻿const CACHE_NAME = "sinyuubuturyuu-launcher-v21";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -102,3 +102,4 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+

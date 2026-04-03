@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   "use strict";
 
   const STORAGE = Object.freeze({
@@ -217,6 +217,18 @@
     let truckTypes = state.truckTypes.slice();
     const current = { ...state.current };
     let changed = false;
+    const hasVehicleSelectionExplicit = Object.prototype.hasOwnProperty.call(state.currentRaw, "vehicleSelectionExplicit");
+    const hasDriverSelectionExplicit = Object.prototype.hasOwnProperty.call(state.currentRaw, "driverSelectionExplicit");
+
+    if (!hasVehicleSelectionExplicit && current.vehicleNumber) {
+      current.vehicleNumber = "";
+      changed = true;
+    }
+
+    if (!hasDriverSelectionExplicit && current.driverName) {
+      current.driverName = "";
+      changed = true;
+    }
 
     if (current.vehicleNumber && !vehicles.includes(current.vehicleNumber)) {
       vehicles = [current.vehicleNumber].concat(vehicles.filter((value) => value !== current.vehicleNumber));
@@ -244,15 +256,6 @@
       changed = true;
     }
 
-    if (!current.vehicleNumber && vehicles.length) {
-      current.vehicleNumber = vehicles[0];
-      changed = true;
-    }
-
-    if (!current.driverName && drivers.length) {
-      current.driverName = normalizeDriverName(drivers[0]);
-      changed = true;
-    }
 
     if (!arraysEqual(state.truckTypes, truckTypes)) {
       safeWriteJson(STORAGE.truckTypes, truckTypes);
@@ -297,9 +300,11 @@
     const nextPatch = {};
     if (Object.prototype.hasOwnProperty.call(patch, "driverName")) {
       nextPatch.driverName = normalizeDriverName(patch.driverName);
+      nextPatch.driverSelectionExplicit = Boolean(nextPatch.driverName);
     }
     if (Object.prototype.hasOwnProperty.call(patch, "vehicleNumber")) {
       nextPatch.vehicleNumber = normalizeVehicleNumber(patch.vehicleNumber);
+      nextPatch.vehicleSelectionExplicit = Boolean(nextPatch.vehicleNumber);
     }
     if (Object.prototype.hasOwnProperty.call(patch, "truckType")) {
       nextPatch.truckType = normalizeTruckType(patch.truckType);
@@ -335,3 +340,4 @@
     truckTypeLabel
   });
 })();
+

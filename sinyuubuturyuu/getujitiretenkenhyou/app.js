@@ -1,4 +1,4 @@
-    (() => {
+﻿    (() => {
       "use strict";
 
       const STORAGE = {
@@ -1213,51 +1213,6 @@
         if (kind === SETTINGS_BACKUP_KIND.VEHICLES) return normalizeVehicles(vehicles);
         if (kind === SETTINGS_BACKUP_KIND.DRIVERS) return normalizeDrivers(drivers);
         return [];
-      }
-
-      async function bootstrapSettingsFromBackupOnInit() {
-        if (!hasSettingsBackupApi()) {
-          return false;
-        }
-        if (vehicles.length > 0 && drivers.length > 0) {
-          return false;
-        }
-
-        let changed = false;
-
-        try {
-          if (!vehicles.length) {
-            const vehicleResult = await window.FirebaseCloudSync.loadSettingsBackup(SETTINGS_BACKUP_KIND.VEHICLES, SETTINGS_BACKUP_SLOT);
-            if (vehicleResult && vehicleResult.ok && vehicleResult.backup) {
-              const vehicleValues = normalizeVehicles(Array.isArray(vehicleResult.backup.values) ? vehicleResult.backup.values : []);
-              if (vehicleValues.length) {
-                applyRestoredSettingsBackup(SETTINGS_BACKUP_KIND.VEHICLES, vehicleValues);
-                setBackupMeta(SETTINGS_BACKUP_KIND.VEHICLES, vehicleResult.backup);
-                changed = true;
-              }
-            }
-          }
-
-          if (!drivers.length) {
-            const driverResult = await window.FirebaseCloudSync.loadSettingsBackup(SETTINGS_BACKUP_KIND.DRIVERS, SETTINGS_BACKUP_SLOT);
-            if (driverResult && driverResult.ok && driverResult.backup) {
-              const driverValues = normalizeDrivers(Array.isArray(driverResult.backup.values) ? driverResult.backup.values : []);
-              if (driverValues.length) {
-                applyRestoredSettingsBackup(SETTINGS_BACKUP_KIND.DRIVERS, driverValues);
-                setBackupMeta(SETTINGS_BACKUP_KIND.DRIVERS, driverResult.backup);
-                changed = true;
-              }
-            }
-          }
-        } catch (error) {
-          console.warn("Failed to bootstrap settings from Firebase backup:", error);
-        }
-
-        if (changed) {
-          renderSettingsBackups();
-        }
-
-        return changed;
       }
 
       async function saveSettingsBackup(kind) {
@@ -2497,26 +2452,30 @@
         }
       }
 
+      async function requireAppLogin() {
+        const authApi = window.DevFirebaseAuth;
+        if (!authApi || typeof authApi.requireUser !== "function") {
+          throw new Error("認証モジュールの読み込みに失敗しました。");
+        }
+        return authApi.requireUser({
+          redirectTo: "../index.html?returnTo=getujitiretenkenhyou/index.html"
+        });
+      }
+
       function canRegisterServiceWorker() {
         if (!("serviceWorker" in navigator)) return false;
         if (!window.isSecureContext) return false;
         return window.location.protocol === "http:" || window.location.protocol === "https:";
       }
 
-      function init() {
+      async function init() {
+        const user = await requireAppLogin();
+        if (!user) return;
         if (window.FirebaseCloudSync && typeof window.FirebaseCloudSync.init === "function") {
           void (async () => {
             await window.FirebaseCloudSync.init({
               getPayload: () => buildCloudPayload("autosave")
             });
-            const restored = await bootstrapSettingsFromBackupOnInit();
-            if (restored) {
-              if (!current.driverName && drivers.length > 0) current.driverName = firstDriverName();
-              if (!current.vehicleNumber && vehicles.length > 0) current.vehicleNumber = vehicles[0];
-              saveCurrent();
-              renderAll();
-            }
-            await refreshSettingsBackups();
             await refreshAvailableMonths();
             await refreshPreviousFromCloud();
           })();
@@ -2540,5 +2499,9 @@
         registerSW();
       }
 
-      init();
+      init().catch((error) => {
+        console.error(error);
+        window.alert(`初期化に失敗しました: ${error.message}`);
+      });
     })();
+

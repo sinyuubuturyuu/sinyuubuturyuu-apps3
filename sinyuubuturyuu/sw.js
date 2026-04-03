@@ -1,10 +1,10 @@
-const CACHE_NAME = "sinyuubuturyuu-launcher-v19";
+﻿const CACHE_NAME = "sinyuubuturyuu-launcher-v21";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./launcher.css",
   "./launcher.js",
-  "./driver-points/driver-points.js?v=20260322-1",
+  "./driver-points/driver-points.js?v=20260401-1",
   "./manifest.webmanifest",
   "./sinyuubuturyuu-icon.png",
   "./apple-touch-icon.png",
@@ -102,3 +102,4 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+

@@ -1,4 +1,4 @@
-const APP_CONFIG = {
+﻿const APP_CONFIG = {
   app1Name: "月次タイヤ点検表",
   app1Path: "./getujitiretenkenhyou/index.html",
   app2Name: "月次日常点検表",
@@ -348,6 +348,7 @@ function renderVehicleSelect() {
     rows: getDisplayedVehicleRows(),
     currentValue: state.shared.current.vehicleNumber,
     labelFor: (value) => value,
+    placeholderText: "車番を選択",
     loadingText: "読み込み中です。",
     emptyText: "登録された車両番号はありません。",
   });
@@ -361,6 +362,7 @@ function renderDriverSelect() {
     currentValue: state.shared.current.driverName,
     labelFor: (value) => sharedSettings.normalizeDriverName(value),
     currentKeyFor: (value) => sharedSettings.normalizeDriverName(value),
+    placeholderText: "乗務員を選択",
     loadingText: "読み込み中です。",
     emptyText: "登録された乗務員名はありません。",
   });
@@ -449,6 +451,7 @@ function renderChoiceSelect({
   rows,
   currentValue,
   labelFor,
+  placeholderText = "",
   loadingText = "読み込み中です。",
   emptyText = "項目はありません。",
   currentKeyFor = (value) => value,
@@ -478,12 +481,16 @@ function renderChoiceSelect({
     return;
   }
 
+  if (placeholderText) {
+    select.appendChild(new Option(placeholderText, ""));
+  }
+
   uniqueRows.forEach((value) => {
     select.appendChild(new Option(labelFor(value), value));
   });
 
-  const selectedRow = uniqueRows.find((value) => currentKeyFor(value) === currentValue) || uniqueRows[0];
-  select.value = selectedRow;
+  const selectedRow = uniqueRows.find((value) => currentKeyFor(value) === currentValue);
+  select.value = selectedRow || "";
   select.disabled = false;
 }
 
@@ -791,6 +798,15 @@ function bindEvents() {
     setCurrentTruckType(value);
   });
 }
+function resetSelectionInputsToPlaceholder() {
+  if (elements.vehicleSelect && elements.vehicleSelect.options.length && elements.vehicleSelect.options[0].value === "") {
+    elements.vehicleSelect.value = "";
+  }
+  if (elements.driverSelect && elements.driverSelect.options.length && elements.driverSelect.options[0].value === "") {
+    elements.driverSelect.value = "";
+  }
+}
+
 function closeSettingsDialog() {
   elements.settingsDialog.close();
 }
@@ -832,7 +848,7 @@ async function removeVehicleNumber(value) {
     sharedSettings.saveVehicles(savedVehicles);
 
     if (String(state.shared.current.vehicleNumber || "").trim() === value) {
-      sharedSettings.updateCurrent({ vehicleNumber: savedVehicles[0] || "" });
+      sharedSettings.updateCurrent({ vehicleNumber: "" });
     }
 
     state.referenceOptions.vehicles = savedVehicles;
@@ -856,7 +872,7 @@ async function removeDriverName(value) {
     sharedSettings.saveDrivers(savedDrivers);
 
     if (String(state.shared.current.driverName || "").trim() === label) {
-      sharedSettings.updateCurrent({ driverName: sharedSettings.normalizeDriverName(savedDrivers[0] || "") });
+      sharedSettings.updateCurrent({ driverName: "" });
     }
 
     state.referenceOptions.drivers = savedDrivers;
@@ -1554,6 +1570,11 @@ function registerServiceWorker() {
       });
   });
 }
+
+
+
+
+
 
 
 
