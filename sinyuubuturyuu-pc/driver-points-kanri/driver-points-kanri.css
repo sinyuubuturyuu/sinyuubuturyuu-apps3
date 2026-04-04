@@ -219,3 +219,25 @@ body.leaderboard-open {
     flex-direction: column;
   }
 }
+
+.field-inline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.field-inline-action .mini-button {
+  min-width: 132px;
+}
+
+@media (max-width: 720px) {
+  .field-inline-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .field-inline-action .mini-button {
+    width: 100%;
+  }
+}

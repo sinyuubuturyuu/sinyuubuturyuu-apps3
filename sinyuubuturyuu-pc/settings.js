@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   "use strict";
 
   const sharedSettings = window.SharedAppSettings;
@@ -732,3 +732,4 @@
     return year + "-" + month + "-" + day + " " + hours + ":" + minutes;
   }
 })();
+

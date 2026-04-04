@@ -2,7 +2,19 @@
   "use strict";
 
   const FEATURE_STORAGE_KEY = "driver.points.feature.enabled.v1";
-  const FIREBASE_APP_NAME = "__driver_points__";
+  const LAST_AWARD_KEY = "driver.points.last_award_at.v1";
+  const POINT_SUMMARY_CACHE_TTL_MS = 5000;
+  const PAGE_SHOW_REFRESH_INTERVAL_MS = 5000;
+  const BADGE_REFRESH_DEBOUNCE_MS = 120;
+  const DRIVER_POINTS_HELP_TITLE = "ポイントに関するヘルプ";
+  const DRIVER_POINTS_HELP_MESSAGE = [
+    "現在は給与等の評価にはなりません。",
+    "お金等には交換できませんので個人でお楽しみください。",
+    "ポイントに関するトラブルについては当方では責任を負いかねます。",
+    "当日と当月送信で２ポイント、その他送信で１ポイントです。",
+    "代車に乗った時もポイントが付きますが車番の設定をお忘れなく。",
+    "なおポイント反映は数秒かかります。"
+  ].join("\n");
   const STORAGE_TARGET = Object.freeze({
     collection: "driver-points",
     summaryPrefix: "driver_points_summary",
@@ -17,19 +29,6 @@
     appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
     measurementId: "G-F9VYGCTHEV"
   });
-  const LAST_AWARD_KEY = "driver.points.last_award_at.v1";
-  const POINT_SUMMARY_CACHE_TTL_MS = 5000;
-  const PAGE_SHOW_REFRESH_INTERVAL_MS = 5000;
-  const BADGE_REFRESH_DEBOUNCE_MS = 120;
-  const DRIVER_POINTS_HELP_TITLE = "ポイントに関するヘルプ";
-  const DRIVER_POINTS_HELP_MESSAGE = [
-    "現在は給与等の評価にはなりません。",
-    "お金等には交換できませんので個人でお楽しみください。",
-    "ポイントに関するトラブルについては当方では責任を負いかねます。",
-    "当日と当月送信で２ポイント、その他送信で１ポイントです。",
-    "代車に乗った時もポイントが付きますが車番の設定をお忘れなく。",
-    "なおポイント反映は数秒かかります。"
-  ].join("\n");
 
   const uiState = {
     mounted: false,
@@ -112,14 +111,6 @@
     return `${STORAGE_TARGET.eventPrefix}_${hashText(eventId)}`;
   }
 
-  function logInfo(message, extra) {
-    if (extra === undefined) {
-      console.info("[DriverPoints]", message);
-      return;
-    }
-    console.info("[DriverPoints]", message, extra);
-  }
-
   function getLastAwardAtMs() {
     const raw = window.localStorage.getItem(LAST_AWARD_KEY);
     if (!raw) {
@@ -138,12 +129,10 @@
     if (!entry) {
       return null;
     }
-
     if ((Date.now() - entry.cachedAt) > POINT_SUMMARY_CACHE_TTL_MS) {
       uiState.summaryCache.delete(identity.summaryKey);
       return null;
     }
-
     return entry.summary;
   }
 
@@ -162,12 +151,10 @@
     if (runtimeState.featureStateInitialized) {
       return;
     }
-
     const currentValue = window.localStorage.getItem(FEATURE_STORAGE_KEY);
     if (currentValue !== "on" && currentValue !== "off") {
-      window.localStorage.setItem(FEATURE_STORAGE_KEY, "off");
+      window.localStorage.setItem(FEATURE_STORAGE_KEY, "on");
     }
-
     runtimeState.featureStateInitialized = true;
   }
 
@@ -242,24 +229,45 @@
     if (!hasFirebaseConfig()) {
       throw new Error("Firebase config is missing for driver points.");
     }
-
     if (runtimeState.promise) {
       return runtimeState.promise;
     }
 
     runtimeState.promise = (async () => {
-      const [{ getApps, initializeApp }, { getAuth, signInAnonymously }, firestoreModule] = await Promise.all([
+      const [{ getApp, getApps, initializeApp }, authModule, firestoreModule] = await Promise.all([
         import("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js"),
         import("https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js"),
         import("https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js")
       ]);
 
-      const existingApp = getApps().find((app) => app.name === FIREBASE_APP_NAME);
-      const app = existingApp || initializeApp(FIREBASE_CONFIG, FIREBASE_APP_NAME);
-      const auth = getAuth(app);
+      const authApi = window.DevFirebaseAuth;
+      let app = null;
+      let auth = null;
 
+      if (authApi && typeof authApi.ensureRuntime === "function") {
+        const sharedRuntime = await authApi.ensureRuntime();
+        app = sharedRuntime && sharedRuntime.app ? sharedRuntime.app : null;
+        auth = sharedRuntime && sharedRuntime.auth ? sharedRuntime.auth : null;
+      }
+
+      if (!app) {
+        app = typeof getApps === "function" && getApps().length
+          ? getApp()
+          : initializeApp(FIREBASE_CONFIG);
+      }
+      if (!auth) {
+        auth = authModule.getAuth(app);
+      }
+
+      if (!auth.currentUser && typeof auth.authStateReady === "function") {
+        await auth.authStateReady();
+      }
       if (!auth.currentUser) {
-        await signInAnonymously(auth);
+        try {
+          await authModule.signInAnonymously(auth);
+        } catch (error) {
+          throw new Error(`ログインしてください: ${error && error.message ? error.message : error}`);
+        }
       }
 
       return {
@@ -277,26 +285,11 @@
   async function readDriverPoints(driverName, vehicleNumber, options = {}) {
     const identity = buildSelectionIdentity(driverName, vehicleNumber);
     if (!identity.driverKey || !identity.vehicleKey) {
-      return {
-        ok: false,
-        enabled: isEnabled(),
-        driverName: identity.driverName,
-        vehicleNumber: identity.vehicleNumber,
-        points: 0,
-        reason: !identity.driverKey ? "driver_missing" : "vehicle_missing"
-      };
+      return { ok: false, enabled: isEnabled(), driverName: identity.driverName, vehicleNumber: identity.vehicleNumber, points: 0 };
     }
-
     if (!isEnabled()) {
-      return {
-        ok: true,
-        enabled: false,
-        driverName: identity.driverName,
-        vehicleNumber: identity.vehicleNumber,
-        points: 0
-      };
+      return { ok: true, enabled: false, driverName: identity.driverName, vehicleNumber: identity.vehicleNumber, points: 0 };
     }
-
     if (options.force !== true) {
       const cachedSummary = getCachedSummary(identity);
       if (cachedSummary) {
@@ -308,16 +301,16 @@
     const { doc, getDoc, getDocFromServer } = runtime.firestoreModule;
     const summaryRef = doc(runtime.db, STORAGE_TARGET.collection, buildSummaryDocId(identity));
     let snapshot;
-
     if (options.force === true && typeof getDocFromServer === "function") {
       try {
         snapshot = await getDocFromServer(summaryRef);
-      } catch (error) {
+      } catch {
         snapshot = await getDoc(summaryRef);
       }
     } else {
       snapshot = await getDoc(summaryRef);
     }
+
     const data = snapshot.exists() ? snapshot.data() : {};
     const summary = {
       ok: true,
@@ -333,36 +326,17 @@
   async function applyAwardBatch(options) {
     const identity = buildSelectionIdentity(options && options.driverName, options && options.vehicleNumber);
     if (!identity.driverKey || !identity.vehicleKey) {
-      return {
-        ok: false,
-        enabled: isEnabled(),
-        addedPoints: 0,
-        reason: !identity.driverKey ? "driver_missing" : "vehicle_missing",
-        awards: []
-      };
+      return { ok: false, enabled: isEnabled(), addedPoints: 0, awards: [] };
     }
-
     if (!isEnabled()) {
-      return {
-        ok: true,
-        enabled: false,
-        addedPoints: 0,
-        awards: []
-      };
+      return { ok: true, enabled: false, addedPoints: 0, awards: [] };
     }
 
     const awards = Array.isArray(options && options.awards)
       ? options.awards.filter((award) => award && award.eventId && Number(award.points) > 0)
       : [];
-
     if (!awards.length) {
-      return {
-        ok: false,
-        enabled: true,
-        addedPoints: 0,
-        reason: "award_missing",
-        awards: []
-      };
+      return { ok: false, enabled: true, addedPoints: 0, awards: [] };
     }
 
     const runtime = await ensureRuntime();
@@ -382,14 +356,12 @@
     await runTransaction(runtime.db, async (transaction) => {
       const snapshots = await Promise.all(eventEntries.map((entry) => transaction.get(entry.ref)));
       const nextAwards = [];
-
       snapshots.forEach((snapshot, index) => {
         if (!snapshot.exists()) {
           nextAwards.push(eventEntries[index].award);
           result.awards[index].applied = true;
         }
       });
-
       if (!nextAwards.length) {
         return;
       }
@@ -408,17 +380,16 @@
         lastAwardAt: serverTimestamp(),
         lastSource: normalizeText(options && options.source)
       };
-
       if (options && options.source === "dailyInspection") {
         pointUpdate.dailyInspectionPoints = increment(addedPoints);
       } else if (options && options.source === "monthlyTireInspection") {
         pointUpdate.monthlyTirePoints = increment(addedPoints);
       }
-
       transaction.set(pointRef, pointUpdate, { merge: true });
 
       nextAwards.forEach((award) => {
-        transaction.set(entryRefById(eventEntries, award.eventId), {
+        const eventRef = eventEntries.find((entry) => entry.award.eventId === award.eventId).ref;
+        transaction.set(eventRef, {
           kind: "driver_points_event",
           driverKey: identity.driverKey,
           driverName: identity.driverName,
@@ -438,52 +409,19 @@
     });
 
     invalidateCachedSummary(identity);
-    const appliedAwards = result.awards.filter((award) => award.applied);
-    if (appliedAwards.length) {
+    if (result.awards.some((award) => award.applied)) {
       markPointAwarded();
-      logInfo("Saved driver points", {
-        projectId: FIREBASE_CONFIG.projectId,
-        collection: STORAGE_TARGET.collection,
-        summaryDocId: buildSummaryDocId(identity),
-        eventDocIds: appliedAwards.map((award) => buildEventDocId(award.eventId)),
-        driverName: identity.driverName,
-        vehicleNumber: identity.vehicleNumber,
-        addedPoints: result.addedPoints
-      });
-    } else {
-      logInfo("Skipped duplicate driver point award", {
-        projectId: FIREBASE_CONFIG.projectId,
-        collection: STORAGE_TARGET.collection,
-        summaryDocId: buildSummaryDocId(identity),
-        driverName: identity.driverName,
-        vehicleNumber: identity.vehicleNumber
-      });
     }
-
     return result;
-  }
-
-  function entryRefById(entries, eventId) {
-    const found = entries.find((entry) => entry.award.eventId === eventId);
-    return found ? found.ref : null;
   }
 
   async function awardDailyInspection(options) {
     const month = normalizeMonthKey(options && options.month);
-    const days = [...new Set(
-      (Array.isArray(options && options.completeDays) ? options.completeDays : [])
-        .map((day) => normalizeDayNumber(day))
-        .filter(Boolean)
-    )];
-
+    const days = [...new Set((Array.isArray(options && options.completeDays) ? options.completeDays : [])
+      .map((day) => normalizeDayNumber(day))
+      .filter(Boolean))];
     if (!month || !days.length) {
-      return {
-        ok: false,
-        enabled: isEnabled(),
-        addedPoints: 0,
-        reason: "send_plan_missing",
-        awards: []
-      };
+      return { ok: false, enabled: isEnabled(), addedPoints: 0, awards: [] };
     }
 
     const sentAt = options && options.sentAt ? new Date(options.sentAt) : new Date();
@@ -513,33 +451,23 @@
     const sentAt = options && options.sentAt ? new Date(options.sentAt) : new Date();
     const targetMonth = normalizeMonthKey(options && options.targetMonth)
       || normalizeMonthKey(normalizeText(options && options.inspectionDate).slice(0, 7));
-
     if (!targetMonth) {
-      return {
-        ok: false,
-        enabled: isEnabled(),
-        addedPoints: 0,
-        reason: "target_month_missing",
-        awards: []
-      };
+      return { ok: false, enabled: isEnabled(), addedPoints: 0, awards: [] };
     }
 
     const sentMonth = buildLocalMonthKey(sentAt);
     const points = targetMonth === sentMonth ? 2 : 1;
-
     return applyAwardBatch({
       driverName: options && options.driverName,
       vehicleNumber: options && options.vehicleNumber,
       source: "monthlyTireInspection",
-      awards: [
-        {
-          eventId: `tire_${hashText(`${buildVehicleKey(options && options.vehicleNumber)}|${buildDriverKey(options && options.driverName)}|${targetMonth}`)}`,
-          points,
-          sentDate: buildLocalDateKey(sentAt),
-          inspectionDate: normalizeText(options && options.inspectionDate),
-          targetMonth
-        }
-      ]
+      awards: [{
+        eventId: `tire_${hashText(`${buildVehicleKey(options && options.vehicleNumber)}|${buildDriverKey(options && options.driverName)}|${targetMonth}`)}`,
+        points,
+        sentDate: buildLocalDateKey(sentAt),
+        inspectionDate: normalizeText(options && options.inspectionDate),
+        targetMonth
+      }]
     });
   }
 
@@ -547,7 +475,6 @@
     if (!document || document.getElementById("driverPointsStyle")) {
       return;
     }
-
     const style = document.createElement("style");
     style.id = "driverPointsStyle";
     style.textContent = [
@@ -667,7 +594,6 @@
     if (!nameEl || !nameEl.parentNode) {
       return null;
     }
-
     ensureStyle();
 
     let wrapper = nameEl.parentElement;
@@ -701,7 +627,6 @@
         vehicleNumber: normalizeVehicleNumber(sharedState && sharedState.current && sharedState.current.vehicleNumber)
       };
     }
-
     return {
       driverName: normalizeDriverName(elements && elements.nameEl && elements.nameEl.textContent),
       vehicleNumber: normalizeVehicleNumber(elements && elements.vehicleEl && elements.vehicleEl.textContent)
@@ -751,8 +676,8 @@
     toggle.id = "driverPointsFeatureToggle";
     toggle.className = "field-select";
     toggle.innerHTML = [
-      "<option value=\"off\">OFF</option>",
-      "<option value=\"on\">ON</option>"
+      '<option value="off">OFF</option>',
+      '<option value="on">ON</option>'
     ].join("");
     field.appendChild(toggle);
 
@@ -805,9 +730,6 @@
 
     const label = section.querySelector(".field > span");
     if (label) {
-      label.remove();
-    }
-    if (label) {
       label.textContent = "ポイント付与";
     }
 
@@ -833,11 +755,6 @@
         section.appendChild(helpButton);
       }
     }
-
-    const actions = section.querySelector(".driver-points-actions");
-    if (actions) {
-      actions.remove();
-    }
   }
 
   function hideBadge() {
@@ -858,11 +775,9 @@
       force: pending.force === true || options.force === true,
       reason: options.reason || pending.reason || "sync"
     };
-
     if (uiState.refreshTimer) {
       window.clearTimeout(uiState.refreshTimer);
     }
-
     uiState.refreshTimer = window.setTimeout(() => {
       const nextOptions = uiState.pendingRefreshOptions || { force: false, reason: "sync" };
       uiState.pendingRefreshOptions = null;
@@ -878,13 +793,7 @@
     }
 
     const hasPendingAwardRefresh = getLastAwardAtMs() > uiState.lastBadgeSyncAt;
-
-    if (
-      options.reason === "pageshow"
-      && options.force !== true
-      && !hasPendingAwardRefresh
-      && (Date.now() - uiState.lastBadgeSyncAt) < PAGE_SHOW_REFRESH_INTERVAL_MS
-    ) {
+    if (options.reason === "pageshow" && options.force !== true && !hasPendingAwardRefresh && (Date.now() - uiState.lastBadgeSyncAt) < PAGE_SHOW_REFRESH_INTERVAL_MS) {
       return;
     }
 
@@ -906,12 +815,10 @@
       if (refreshToken !== uiState.badgeRefreshToken) {
         return;
       }
-
       if (!summary.enabled) {
         hideBadge();
         return;
       }
-
       elements.badge.textContent = `${summary.points}pt`;
       elements.badge.title = `${summary.vehicleNumber} / ${summary.driverName} のポイント`;
       uiState.lastBadgeSyncAt = Date.now();
@@ -931,23 +838,12 @@
     if (!elements || uiState.observer) {
       return;
     }
-
     uiState.observer = new MutationObserver(() => {
       requestBadgeRefresh({ reason: "selection_change" });
     });
-
-    uiState.observer.observe(elements.nameEl, {
-      childList: true,
-      characterData: true,
-      subtree: true
-    });
-
+    uiState.observer.observe(elements.nameEl, { childList: true, characterData: true, subtree: true });
     if (elements.vehicleEl) {
-      uiState.observer.observe(elements.vehicleEl, {
-        childList: true,
-        characterData: true,
-        subtree: true
-      });
+      uiState.observer.observe(elements.vehicleEl, { childList: true, characterData: true, subtree: true });
     }
   }
 
@@ -961,7 +857,6 @@
       syncLauncherUi({ reason: "remount" });
       return;
     }
-
     uiState.mounted = true;
     ensureBadgeElements();
     ensureSettingsSection();
@@ -1001,3 +896,4 @@
     bootUiWhenReady();
   }
 })();
+

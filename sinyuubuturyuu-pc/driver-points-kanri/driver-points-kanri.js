@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   "use strict";
 
   const sharedSettings = window.SharedAppSettings || null;
@@ -23,7 +23,6 @@
   const elements = {
     vehicleSelect: document.getElementById("vehicleSelect"),
     driverSelect: document.getElementById("driverSelect"),
-    reloadButton: document.getElementById("reloadButton"),
     saveButton: document.getElementById("saveButton"),
     openLeaderboardButton: document.getElementById("openLeaderboardButton"),
     closeLeaderboardButton: document.getElementById("closeLeaderboardButton"),
@@ -59,10 +58,6 @@
 
     elements.driverSelect.addEventListener("change", function () {
       void loadPointsForCurrentSelection();
-    });
-
-    elements.reloadButton.addEventListener("click", function () {
-      void loadPointsForCurrentSelection(true);
     });
 
     elements.saveButton.addEventListener("click", function () {
@@ -104,9 +99,12 @@
       state.optionSourceReady = true;
 
       if (state.vehicleOptions.length && state.driverOptions.length) {
-        elements.vehicleSelect.value = state.vehicleOptions[0].value;
-        elements.driverSelect.value = state.driverOptions[0].value;
-        await loadPointsForCurrentSelection();
+        elements.vehicleSelect.value = "";
+        elements.driverSelect.value = "";
+        elements.pointsValue.textContent = "--";
+        elements.pointsInput.value = "";
+        elements.pointsMeta.textContent = "車番と乗務員を選択してください。";
+        setStatus("車番と乗務員を選択してください。");
       } else {
         setStatus("車番または乗務員の候補がまだありません。設定画面で登録してください。", true);
       }
@@ -1181,7 +1179,6 @@
 
   function syncButtons() {
     const hasSelection = Boolean(normalizeText(elements.vehicleSelect.value) && getSelectedDriverOption());
-    elements.reloadButton.disabled = !hasSelection || state.loadingPoints || !state.optionSourceReady;
     elements.saveButton.disabled = !hasSelection || state.loadingPoints || state.savingPoints || !state.pointsDb;
     elements.openLeaderboardButton.disabled = state.loadingLeaderboard || !state.pointsDb;
   }
@@ -1215,3 +1212,4 @@
     return docRef.get(SERVER_GET_OPTIONS);
   }
 })();
+

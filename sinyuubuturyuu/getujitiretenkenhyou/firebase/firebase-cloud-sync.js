@@ -1,4 +1,4 @@
-// Firestore cloud autosave (additive patch, no UI changes)
+﻿// Firestore cloud autosave (additive patch, no UI changes)
 (function () {
   "use strict";
 
@@ -1164,7 +1164,7 @@
       settingsBackupCollection: "syainmeibo",
       documentPrefix: "getujitiretenkenhyou",
       companyCode: "company",
-      useAnonymousAuth: true,
+      useAnonymousAuth: false,
       autoFlushIntervalMs: 15000
     }, window.APP_FIREBASE_SYNC_OPTIONS || {});
 
@@ -1218,3 +1218,4 @@
     isEnabled: () => Boolean(state.options && state.options.enabled)
   };
 })();
+

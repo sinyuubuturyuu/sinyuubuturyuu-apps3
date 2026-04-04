@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>運用開始前チェック</title>
+  <meta name="description" content="運用開始前の確認項目を整理するチェックページ">
+  <link rel="stylesheet" href="../launcher/launcher.css">
+  <link rel="stylesheet" href="./checklist.css">
+</head>
+<body>
+  <main class="page release-checklist-page">
+    <section class="card release-checklist-card">
+      <div class="section-head release-checklist-head">
+        <div>
+          <p class="eyebrow">Release Prep</p>
+          <h1>運用開始前チェック</h1>
+          <p class="lead">運用開始前に確認する項目を、順番にチェックするページです。</p>
+        </div>
+        <div class="button-row compact">
+          <a class="button primary" href="../index.html">戻る</a>
+        </div>
+      </div>
+
+      <section class="release-summary-grid" aria-label="進捗サマリー">
+        <article class="summary-panel">
+          <p class="summary-label">全体進捗</p>
+          <p id="overallProgressText" class="summary-value">0 / 0</p>
+          <div class="progress-track" aria-hidden="true">
+            <div id="overallProgressBar" class="progress-fill"></div>
+          </div>
+          <p id="overallProgressCaption" class="status-text">未着手です。</p>
+        </article>
+
+        <article class="summary-panel">
+          <div class="summary-panel-head">
+            <div>
+              <p class="summary-label">優先順</p>
+              <p class="status-text">重要な項目から順に確認できます。</p>
+            </div>
+            <button id="resetChecklistButton" class="button primary reset-button" type="button">チェックを全て外す</button>
+          </div>
+          <ol id="priorityList" class="priority-list"></ol>
+        </article>
+      </section>
+
+      <section class="card section-card release-callout" aria-label="使い方">
+        <h2>使い方</h2>
+        <p class="lead">ルール確認、認証、社員連携、確認手順などを順番にチェックしてください。途中まで進めた状態も保存されます。</p>
+      </section>
+
+      <div id="checklistSections" class="release-sections"></div>
+    </section>
+  </main>
+
+  <script src="./checklist.js"></script>
+</body>
+</html>

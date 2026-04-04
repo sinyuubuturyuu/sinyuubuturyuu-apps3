@@ -170,9 +170,29 @@ elements.tableHead.addEventListener("click", handleDayHeadTap);
 elements.tableBody.addEventListener("click", handleCheckTap);
 document.addEventListener("visibilitychange", handleVisibilityChange);
 
-boot().catch((error) => {
-  setEntryStatus(`初期化に失敗しました: ${error.message}`, true);
-});
+void bootAfterAuth();
+
+async function bootAfterAuth() {
+  try {
+    const user = await requireAppLogin();
+    if (!user) {
+      return;
+    }
+    await boot();
+  } catch (error) {
+    setEntryStatus(`初期化に失敗しました: ${error.message}`, true);
+  }
+}
+
+async function requireAppLogin() {
+  const authApi = window.DevFirebaseAuth;
+  if (!authApi || typeof authApi.requireUser !== "function") {
+    throw new Error("認証モジュールの読み込みに失敗しました。");
+  }
+  return authApi.requireUser({
+    redirectTo: "../index.html?returnTo=getujinitijyoutenkenhyou/index.html"
+  });
+}
 
 async function boot() {
   await clearLegacyCaches();
@@ -492,16 +512,21 @@ async function createStore() {
   }
 
   try {
-    const [{ initializeApp }, authModule, firestoreModule] = await Promise.all([
+        const [{ getApp, getApps, initializeApp }, authModule, firestoreModule] = await Promise.all([
       import("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js"),
       import("https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js"),
       import("https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js")
     ]);
 
-    const app = initializeApp(firebaseConfig);
+    const app = typeof getApps === "function" && getApps().length
+      ? getApp()
+      : initializeApp(firebaseConfig);
     const auth = authModule.getAuth(app);
+    if (!auth.currentUser && typeof auth.authStateReady === "function") {
+      await auth.authStateReady();
+    }
     if (!auth.currentUser) {
-      await authModule.signInAnonymously(auth);
+      throw new Error("ログインしてください。");
     }
     const db = firestoreModule.getFirestore(app);
     return createFirestoreStore(db, firestoreModule);
@@ -1615,3 +1640,5 @@ function canAccessServiceWorkerApis() {
 
   return window.location.protocol === "http:" || window.location.protocol === "https:";
 }
+
+

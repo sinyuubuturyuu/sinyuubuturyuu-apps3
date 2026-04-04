@@ -12,3 +12,4 @@ window.APP_SETTINGS = {
   collectionName: "getujinitijyoutenkenhyou",
   useLocalFallbackWhenFirebaseIsMissing: true
 };
+

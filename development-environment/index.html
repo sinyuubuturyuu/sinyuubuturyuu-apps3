@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>開発環境</title>
+  <meta name="description" content="Codex に開発環境切替を依頼するためのページです。Firebase の本番データを壊さないことを最優先にします。">
+  <link rel="stylesheet" href="../launcher/launcher.css">
+  <link rel="stylesheet" href="./checklist.css">
+</head>
+<body>
+  <main class="page dev-check-page">
+    <section class="card dev-check-card">
+      <div class="section-head dev-check-head">
+        <div>
+          <p class="eyebrow">Development Safety</p>
+          <h1>開発環境</h1>
+          <p class="lead">開発環境への移行は、Codex への依頼と、その後の人の確認で進めます。ここでは、貼り付ける依頼文と、依頼後に見る順番をまとめています。</p>
+        </div>
+        <div class="button-row compact">
+          <a class="button primary" href="../index.html">戻る</a>
+        </div>
+      </div>
+
+      <section class="dev-warning" aria-label="最重要事項">
+        <h2>最重要</h2>
+        <ul class="dev-warning-list">
+          <li><strong>本番 Firebase</strong> <code>sinyuubuturyuu-86aeb</code> に書き込まない。</li>
+          <li>依頼は <strong>作業ブランチ</strong> でだけ行う。</li>
+          <li><code>main</code> では開発環境切替を行わない。</li>
+        </ul>
+      </section>
+
+      <section class="prompt-card section-card" aria-label="Codex に貼り付ける依頼文">
+        <div class="prompt-card-head">
+          <div>
+            <h2>1. プロンプトを貼り付けて実行</h2>
+            <p class="status-text">この依頼文をそのまま Codex に貼り付けます。ブランチ名の日付だけは毎回当日のものへ変えてください。</p>
+          </div>
+          <button id="copyPromptButton" class="button primary copy-button" type="button">依頼文をコピー</button>
+        </div>
+        <pre id="codexPromptText" class="prompt-text" tabindex="0">この2つの docs を参照して、ブランチ `feature/dev-env-YYYY-MM-DD` を開発環境へ切り替えてください。
+
+ブランチ名の日付部分は固定値にせず、必ず作業当日の日付へ置き換えてください。
+今日が 2026-04-04 なら `feature/dev-env-2026-04-04` のようにしてください。
+
+参照する docs:
+- docs/firebase-auth-email-password-spec.md
+- docs/firebase-auth-pc-spec.md
+
+前提:
+- 今回は本番反映ではなく、開発環境切替だけを行ってください。
+- 本番 Firebase `sinyuubuturyuu-86aeb` のデータを壊さないことを最優先にしてください。
+- `main` には変更を入れず、ブランチ `feature/dev-env-YYYY-MM-DD` 上だけで変更してください。
+
+修正対象:
+- sinyuubuturyuu/launcher.js
+- sinyuubuturyuu/driver-points/driver-points.js
+- sinyuubuturyuu/getujinitijyoutenkenhyou/firebase-config.js
+- sinyuubuturyuu/getujitiretenkenhyou/firebase/firebase-config.js
+- sinyuubuturyuu-pc/getujinitijyoutenkenhyou-pc/src/main.js
+- sinyuubuturyuu-pc/getujitiretenkenhyou-pc/firebase/firebase-config.js
+- sinyuubuturyuu-pc/driver-points-kanri/firebase-config.js
+
+必須条件:
+- 切替対象ファイルだけを書き換えてください。
+- `projectId` だけでなく、 `authDomain` `storageBucket` `appId` `measurementId` なども開発用の値へ揃えてください。
+- 変更後は、対象ファイル内に `sinyuubuturyuu-86aeb` が残っていないか確認してください。
+- 起動前の設定として `projectId` が `sinyuubuturyuu-dev` になることを確認してください。
+- 変更したファイル一覧と確認結果を最後に報告してください。</pre>
+        <p id="copyPromptStatus" class="status-text" aria-live="polite"></p>
+      </section>
+
+      <section class="section-card explain-card" aria-label="依頼文の見方">
+        <h2>依頼文の見方</h2>
+        <ul class="dev-warning-list">
+          <li><strong>ブランチ名</strong> は必ず日付入りで、その日のものに書き換える。</li>
+          <li><strong>修正対象</strong> は、Codex が触るファイルを限定するためです。</li>
+          <li><strong>必須条件</strong> は、Firebase の本番データを壊さないために設定確認をさせるためです。</li>
+          <li><strong>最後の報告</strong> は、人が次の確認をするための材料にするためです。</li>
+        </ul>
+      </section>
+
+      <section class="section-card confirm-card" aria-label="依頼後の確認">
+        <div class="confirm-card-head">
+          <div>
+            <h2>2. Codex の完了報告を確認</h2>
+            <p class="status-text">最初の依頼で指示した内容が、完了報告に含まれているかを確認します。</p>
+          </div>
+          <button id="resetChecklistButton" class="button primary copy-button" type="button">チェックを全て外す</button>
+        </div>
+
+        <article class="summary-panel compact-summary">
+          <p class="summary-label">確認進捗</p>
+          <p id="overallProgressText" class="summary-value">0 / 0</p>
+          <div class="progress-track" aria-hidden="true">
+            <div id="overallProgressBar" class="progress-fill"></div>
+          </div>
+          <p id="overallProgressCaption" class="status-text">未着手です。</p>
+        </article>
+
+        <div id="checklistSections" class="release-sections"></div>
+      </section>
+
+      <section class="section-card manual-check-card" aria-label="3. パソコン用アプリで手動確認">
+        <h2>3. パソコン用アプリで手動確認</h2>
+        <ul class="dev-warning-list">
+          <li>いったんログアウトし、テストユーザー `sinyuu@test.000` / `000000` でログインする。</li>
+          <li>再読み込み後も同じテストユーザーが表示されることを確認する。</li>
+          <li>`月次タイヤ点検表` を開き、テスト入力して保存し、保存内容が反映されることを確認する。</li>
+          <li>`月次日常点検表` を開き、テスト入力して保存し、保存内容が反映されることを確認する。</li>
+          <li>`ポイント管理` を開き、テスト操作して保存し、保存内容が反映されることを確認する。</li>
+          <li>`社員名簿` は入力確認を行わず、`testユーザー` が表示されることを確認する。</li>
+          <li>本番環境には影響が出ていないことを確認する。</li>
+        </ul>
+      </section>
+
+      <section class="section-card start-card" aria-label="4. 作業開始">
+        <h2>4. 作業開始</h2>
+        <p class="lead">上の確認が全て通ってから、そのブランチで開発作業を始めます。確認が終わる前には機能開発を始めないでください。</p>
+        <p class="status-text">本番反映時は、Firebase 設定を本番用へ戻す作業を別で行います。</p>
+      </section>
+    </section>
+  </main>
+
+  <script src="./checklist.js"></script>
+</body>
+</html>

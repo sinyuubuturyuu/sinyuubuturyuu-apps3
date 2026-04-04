@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   "use strict";
 
   window.DRIVER_POINTS_FIREBASE_CONFIG = {
@@ -13,7 +13,7 @@
 
   window.DRIVER_POINTS_FIREBASE_SETTINGS = {
     appName: "driver-points-app",
-    useAnonymousAuth: true,
+    useAnonymousAuth: false,
     preferredCollection: "driver-points",
     collectionCandidates: [
       "driver-points"
@@ -62,3 +62,4 @@
     ]
   };
 })();
+
