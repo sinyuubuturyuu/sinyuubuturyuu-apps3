@@ -1,5 +1,5 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+﻿import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import { getAuth, updateCurrentUser } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   collection,
   doc,
@@ -46,7 +46,7 @@ const EXCEL_STAMP_IMAGE_SIZES = {
 };
 let jsZipModulePromise = null;
 
-const firebaseConfig = {
+const firebaseConfig = window.APP_FIREBASE_CONFIG || {
   apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
   authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
   projectId: "sinyuubuturyuu-86aeb",
@@ -187,10 +187,10 @@ function getReiwaYear(year) {
   return year >= 2019 ? year - 2018 : year;
 }
 
-const app = initializeApp(firebaseConfig);
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
-const referenceApp = initializeApp(referenceFirebaseConfig, "reference-app");
+const referenceApp = firebaseConfig.projectId === referenceFirebaseConfig.projectId ? app : initializeApp(referenceFirebaseConfig, "reference-app");
 const referenceDb = getFirestore(referenceApp);
 const referenceAuth = getAuth(referenceApp);
 
@@ -436,20 +436,44 @@ function buildReferenceDocPath(referenceDoc) {
   return `${referenceDoc.collection}/${referenceDoc.id}`;
 }
 
-async function ensureReferenceAuth() {
-  if (referenceAuth.currentUser) {
-    return referenceAuth.currentUser;
+async function ensureSignedInUser(targetAuth) {
+  if (targetAuth.currentUser) {
+    return targetAuth.currentUser;
   }
-  const credential = await signInAnonymously(referenceAuth);
-  return credential.user;
+  if (typeof targetAuth.authStateReady === "function") {
+    await targetAuth.authStateReady();
+  }
+  if (targetAuth.currentUser) {
+    return targetAuth.currentUser;
+  }
+
+  const authApi = window.DevFirebaseAuth;
+  if (!authApi || typeof authApi.getCurrentUser !== "function") {
+    throw new Error("ログインしてください。");
+  }
+
+  const user = await authApi.getCurrentUser();
+  if (!user) {
+    throw new Error("ログインしてください。");
+  }
+
+  if (typeof updateCurrentUser === "function") {
+    try {
+      await updateCurrentUser(targetAuth, user);
+    } catch (error) {
+      console.warn("Failed to sync signed-in user to target auth:", error);
+    }
+  }
+
+  return targetAuth.currentUser || user;
+}
+
+async function ensureReferenceAuth() {
+  return ensureSignedInUser(referenceAuth);
 }
 
 async function ensureAppAuth() {
-  if (auth.currentUser) {
-    return auth.currentUser;
-  }
-  const credential = await signInAnonymously(auth);
-  return credential.user;
+  return ensureSignedInUser(auth);
 }
 
 function setSelectOptions(selectEl, options, placeholder, selectedValue = "") {
@@ -2523,3 +2547,6 @@ renderBody();
 renderBottomStampRow();
 syncToolbarWidth();
 loadReferenceOptions().catch((err) => setStatus(`候補一覧の取得に失敗しました: ${err.message}`, true));
+
+
+

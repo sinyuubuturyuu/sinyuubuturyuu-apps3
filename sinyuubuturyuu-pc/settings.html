@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="./icons/icon-sinyuubuturyuu-pc.png">
   <link rel="manifest" href="./manifest.webmanifest?v=20260330a">
   <meta name="theme-color" content="#ffffff">
-  <link rel="stylesheet" href="./shell.css?v=20260330a">
+  <link rel="stylesheet" href="./shell.css?v=20260404b">
 </head>
 <body class="shell-body">
   <main class="shell-page">
@@ -111,10 +111,44 @@
     })();
   </script>
   <script src="./shared-settings.js?v=20260330a"></script>
-  <script src="./getujitiretenkenhyou-pc/firebase/firebase-config.js?v=20260330a"></script>
+  <script src="./getujitiretenkenhyou-pc/firebase/firebase-config.js?v=20260404b"></script>
+<script src="./auth/firebase-auth.js?v=20260404b"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./settings.js?v=20260330a"></script>
+  <script>
+  (function () {
+    const version = window.__SINYUUBUTURYUU_PC_VERSION__
+      || (window.SinyuubuturyuuPcVersion ? window.SinyuubuturyuuPcVersion.getVersion("20260404b") : "20260404b");
+    const launcherUrl = new URL("./index.html", window.location.href);
+    launcherUrl.searchParams.set("returnTo", window.location.href);
+
+    const authApi = window.DevFirebaseAuth;
+    if (!authApi || typeof authApi.requireUser !== "function") {
+      console.warn("Auth bootstrap was not available.");
+      window.location.replace(launcherUrl.toString());
+      return;
+    }
+
+    authApi.requireUser({ redirectTo: launcherUrl.toString(), waitMs: 5000 }).then(function (user) {
+      if (!user) {
+        return;
+      }
+      loadScript();
+    }).catch(function (error) {
+      console.warn("Auth bootstrap failed:", error);
+      window.location.replace(launcherUrl.toString());
+    });
+
+    function loadScript() {
+      const script = document.createElement("script");
+      script.src = "./settings.js?v=" + version;
+      document.body.appendChild(script);
+    }
+  })();
+</script>
 </body>
 </html>
+
+
+

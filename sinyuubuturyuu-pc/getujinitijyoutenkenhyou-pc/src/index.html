@@ -114,7 +114,46 @@
       }
     })();
   </script>
+  <script src="../../getujitiretenkenhyou-pc/firebase/firebase-config.js?v=20260404b"></script>
+  <script src="../../auth/firebase-auth.js?v=20260404b"></script>
   <script src="../../shared-settings.js?v=20260330a"></script>
-  <script type="module" src="./main.js?v=20260330a"></script>
+  <script>
+    (function () {
+      const version = window.__SINYUUBUTURYUU_PC_VERSION__
+        || (window.SinyuubuturyuuPcVersion ? window.SinyuubuturyuuPcVersion.getVersion("20260404b") : "20260404b");
+      const launcherUrl = new URL("../../index.html", window.location.href);
+      launcherUrl.searchParams.set("returnTo", window.location.href);
+
+      const authApi = window.DevFirebaseAuth;
+      if (!authApi || typeof authApi.requireUser !== "function") {
+        console.warn("Auth bootstrap was not available.");
+        window.location.replace(launcherUrl.toString());
+        return;
+      }
+
+      authApi.requireUser({ redirectTo: launcherUrl.toString(), waitMs: 5000 }).then(function (user) {
+        if (!user) {
+          return;
+        }
+        loadScript();
+      }).catch(function (error) {
+        console.warn("Auth bootstrap failed:", error);
+        window.location.replace(launcherUrl.toString());
+      });
+
+      function loadScript() {
+        const script = document.createElement("script");
+        script.type = "module";
+        script.src = "./main.js?v=" + version;
+        document.body.appendChild(script);
+      }
+    })();
+  </script>
 </body>
 </html>
+
+
+
+
+
+

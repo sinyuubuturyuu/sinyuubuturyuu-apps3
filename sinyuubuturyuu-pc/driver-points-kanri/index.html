@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
@@ -7,7 +7,7 @@
   <script>
     (function () {
       const versionSync = window.SinyuubuturyuuPcVersion || null;
-      const version = versionSync ? versionSync.ensureLatestVersion("20260330a") : "20260330a";
+      const version = versionSync ? versionSync.ensureLatestVersion("20260404a") : "20260404a";
       if (!version) return;
       window.__SINYUUBUTURYUU_PC_VERSION__ = version;
     })();
@@ -18,8 +18,8 @@
   <link rel="apple-touch-icon" href="../icons/icon-sinyuubuturyuu-pc.png">
   <link rel="manifest" href="../manifest.webmanifest?v=20260330a">
   <meta name="theme-color" content="#ffffff">
-  <link rel="stylesheet" href="../shell.css?v=20260330a">
-  <link rel="stylesheet" href="./driver-points-kanri.css?v=20260330a">
+  <link rel="stylesheet" href="../shell.css?v=20260404b">
+  <link rel="stylesheet" href="./driver-points-kanri.css?v=20260404a">
 </head>
 <body class="shell-body">
   <main class="shell-page">
@@ -45,11 +45,6 @@
         </label>
       </div>
 
-      <div class="button-row">
-        <button id="reloadButton" class="mini-button primary" type="button">ポイント読込</button>
-        <button id="saveButton" class="mini-button" type="button">ポイント保存</button>
-      </div>
-
       <section class="points-summary" aria-labelledby="pointsSummaryHeading">
         <div class="summary-copy">
           <p id="pointsSummaryHeading" class="summary-label">現在のポイント</p>
@@ -57,8 +52,11 @@
           <p id="pointsMeta" class="status-text">まだポイントを読み込んでいません。</p>
         </div>
 
-        <label class="field">
-          <span>加減算ポイント</span>
+        <label class="field field-inline-action">
+          <span class="field-inline-header">
+            <span>加減算ポイント</span>
+            <button id="saveButton" class="mini-button primary" type="button">確定</button>
+          </span>
           <input id="pointsInput" type="number" inputmode="numeric" step="1" placeholder="+10 または -5">
         </label>
       </section>
@@ -66,6 +64,7 @@
       <div class="button-row">
         <button id="openLeaderboardButton" class="mini-button secondary" type="button">社員ポイント一覧を見る</button>
       </div>
+      <p id="statusText" class="status-text" aria-live="polite"></p>
     </section>
   </main>
 
@@ -101,7 +100,7 @@
     (function () {
       const versionSync = window.SinyuubuturyuuPcVersion || null;
       const version = window.__SINYUUBUTURYUU_PC_VERSION__
-        || (versionSync ? versionSync.getVersion("20260330a") : "20260330a");
+        || (versionSync ? versionSync.getVersion("20260404a") : "20260404a");
       if (!("serviceWorker" in navigator)) {
         return;
       }
@@ -129,11 +128,46 @@
     })();
   </script>
   <script src="../shared-settings.js?v=20260330a"></script>
-  <script src="../getujitiretenkenhyou-pc/firebase/firebase-config.js?v=20260330a"></script>
-  <script src="./firebase-config.js?v=20260330a"></script>
+  <script src="../getujitiretenkenhyou-pc/firebase/firebase-config.js?v=20260404b"></script>
+  <script src="./firebase-config.js?v=20260404b"></script>
+<script src="../auth/firebase-auth.js?v=20260404b"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./driver-points-kanri.js?v=20260330a"></script>
+  <script>
+  (function () {
+    const version = window.__SINYUUBUTURYUU_PC_VERSION__
+      || (window.SinyuubuturyuuPcVersion ? window.SinyuubuturyuuPcVersion.getVersion("20260404b") : "20260404b");
+    const launcherUrl = new URL("../index.html", window.location.href);
+    launcherUrl.searchParams.set("returnTo", window.location.href);
+
+    const authApi = window.DevFirebaseAuth;
+    if (!authApi || typeof authApi.requireUser !== "function") {
+      console.warn("Auth bootstrap was not available.");
+      window.location.replace(launcherUrl.toString());
+      return;
+    }
+
+    authApi.requireUser({ redirectTo: launcherUrl.toString(), waitMs: 5000 }).then(function (user) {
+      if (!user) {
+        return;
+      }
+      loadScript();
+    }).catch(function (error) {
+      console.warn("Auth bootstrap failed:", error);
+      window.location.replace(launcherUrl.toString());
+    });
+
+    function loadScript() {
+      const script = document.createElement("script");
+      script.src = "./driver-points-kanri.js?v=" + version;
+      document.body.appendChild(script);
+    }
+  })();
+</script>
 </body>
 </html>
+
+
+
+

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
@@ -7,18 +7,18 @@
   <script>
     (function () {
       const versionSync = window.SinyuubuturyuuPcVersion || null;
-      const version = versionSync ? versionSync.ensureLatestVersion("20260330a") : "20260330a";
+      const version = versionSync ? versionSync.ensureLatestVersion("20260404b") : "20260404b";
       if (!version) return;
       window.__SINYUUBUTURYUU_PC_VERSION__ = version;
     })();
   </script>
   <title>シンユウ物流パソコン用</title>
-  <meta name="description" content="月次タイヤ点検表と月次日常点検表の統合ランチャー">
+  <meta name="description" content="月次タイヤ点検表と月次日常点検表、ポイント管理画面のランチャーです。">
   <link rel="icon" href="./icons/icon-sinyuubuturyuu-pc.png" type="image/png">
   <link rel="apple-touch-icon" href="./icons/icon-sinyuubuturyuu-pc.png">
-  <link rel="manifest" href="./manifest.webmanifest?v=20260330a">
+  <link rel="manifest" href="./manifest.webmanifest?v=20260404b">
   <meta name="theme-color" content="#ffffff">
-  <link rel="stylesheet" href="./shell.css?v=20260330a">
+  <link rel="stylesheet" href="./shell.css?v=20260404b">
 </head>
 <body class="shell-body">
   <main class="shell-page">
@@ -32,62 +32,48 @@
         <h1>シンユウ物流パソコン用</h1>
       </div>
 
-      <nav class="home-actions" aria-label="アプリ選択">
-        <a id="tireInspectionButton" class="action-button primary" href="./getujitiretenkenhyou-pc/index.html">月次タイヤ点検表</a>
-        <a id="dailyInspectionButton" class="action-button primary" href="./getujinitijyoutenkenhyou-pc/index.html">月次日常点検表</a>
-        <a id="driverPointsButton" class="action-button primary" href="./driver-points-kanri/index.html">ポイント管理</a>
-        <a class="action-button secondary" href="./settings.html">設定</a>
-      </nav>
+      <section id="authLoading" class="auth-panel auth-loading" aria-label="認証確認中">
+        <p class="auth-copy">ログイン状態を確認しています。</p>
+      </section>
+
+      <section id="loginPanel" class="auth-panel" aria-label="ログイン" hidden>
+        <p class="auth-copy">メールアドレスとパスワードでログインしてください。</p>
+        <form id="loginForm" class="auth-form">
+          <label class="field">
+            <span>メールアドレス</span>
+            <input id="loginEmail" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com" required>
+          </label>
+          <label class="field">
+            <span>パスワード</span>
+            <input id="loginPassword" type="password" autocomplete="current-password" placeholder="パスワード" required>
+          </label>
+          <button id="loginButton" class="action-button primary" type="submit">ログイン</button>
+        </form>
+        <p id="authStatus" class="auth-status" aria-live="polite"></p>
+      </section>
+
+      <section id="launcherApp" hidden>
+        <div class="auth-user-row">
+          <div>
+            <p class="auth-user-label">ログイン中</p>
+            <p id="authUserEmail" class="auth-user-email"></p>
+          </div>
+          <button id="logoutButton" class="mini-button primary" type="button">ログアウト</button>
+        </div>
+
+        <nav class="home-actions" aria-label="アプリ選択">
+          <a id="tireInspectionButton" class="action-button primary" href="./getujitiretenkenhyou-pc/index.html">月次タイヤ点検表</a>
+          <a id="dailyInspectionButton" class="action-button primary" href="./getujinitijyoutenkenhyou-pc/index.html">月次日常点検表</a>
+          <a id="driverPointsButton" class="action-button primary" href="./driver-points-kanri/index.html">ポイント管理</a>
+          <a id="settingsButton" class="action-button secondary" href="./settings.html">設定</a>
+        </nav>
+      </section>
     </section>
   </main>
 
+  <script src="./getujitiretenkenhyou-pc/firebase/firebase-config.js?v=20260404b"></script>
+  <script src="./auth/firebase-auth.js?v=20260404b"></script>
   <script src="./launcher-window.js?v=20260330a"></script>
-  <script>
-    (function () {
-      const versionSync = window.SinyuubuturyuuPcVersion || null;
-      const version = window.__SINYUUBUTURYUU_PC_VERSION__
-        || (versionSync ? versionSync.getVersion("20260330a") : "20260330a");
-      const tireInspectionButton = document.getElementById("tireInspectionButton");
-      const dailyInspectionButton = document.getElementById("dailyInspectionButton");
-      const driverPointsButton = document.getElementById("driverPointsButton");
-      const settingsButton = document.querySelector(".action-button.secondary");
-
-      setVersionedHref(tireInspectionButton, "./getujitiretenkenhyou-pc/index.html");
-      setVersionedHref(dailyInspectionButton, "./getujinitijyoutenkenhyou-pc/index.html");
-      setVersionedHref(driverPointsButton, "./driver-points-kanri/index.html");
-      setVersionedHref(settingsButton, "./settings.html");
-
-      registerInstallServiceWorker();
-
-      if (window.launcherWindow) {
-        window.launcherWindow.bindInspectionLaunch(tireInspectionButton);
-        window.launcherWindow.bindInspectionLaunch(dailyInspectionButton);
-        window.launcherWindow.bindLauncherSizedLaunch(driverPointsButton);
-      }
-
-      function registerInstallServiceWorker() {
-        if (!("serviceWorker" in navigator)) {
-          return;
-        }
-
-        window.addEventListener("load", function () {
-          navigator.serviceWorker.register("./sw.js?v=" + version, {
-            updateViaCache: "none"
-          }).then(function (registration) {
-            return registration.update();
-          }).catch(function (error) {
-            console.warn("Failed to register service worker:", error);
-          });
-        });
-      }
-
-      function setVersionedHref(element, path) {
-        if (!element) {
-          return;
-        }
-        element.href = path + "?v=" + version;
-      }
-    })();
-  </script>
+  <script src="./launcher.js?v=20260404b"></script>
 </body>
 </html>

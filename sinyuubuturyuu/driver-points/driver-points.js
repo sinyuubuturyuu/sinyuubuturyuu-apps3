@@ -6,6 +6,15 @@
   const POINT_SUMMARY_CACHE_TTL_MS = 5000;
   const PAGE_SHOW_REFRESH_INTERVAL_MS = 5000;
   const BADGE_REFRESH_DEBOUNCE_MS = 120;
+  const DRIVER_POINTS_HELP_TITLE = "ポイントに関するヘルプ";
+  const DRIVER_POINTS_HELP_MESSAGE = [
+    "現在は給与等の評価にはなりません。",
+    "お金等には交換できませんので個人でお楽しみください。",
+    "ポイントに関するトラブルについては当方では責任を負いかねます。",
+    "当日と当月送信で２ポイント、その他送信で１ポイントです。",
+    "代車に乗った時もポイントが付きますが車番の設定をお忘れなく。",
+    "なおポイント反映は数秒かかります。"
+  ].join("\n");
   const STORAGE_TARGET = Object.freeze({
     collection: "driver-points",
     summaryPrefix: "driver_points_summary",
@@ -472,9 +481,111 @@
       ".driver-points-inline { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }",
       ".driver-points-name { min-width: 0; }",
       ".driver-points-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 60px; min-height: 28px; padding: 4px 10px; border-radius: 999px; background: rgba(23, 105, 210, 0.12); color: var(--primary, #1769d2); font-size: 0.82rem; font-weight: 800; line-height: 1; }",
-      ".driver-points-badge[hidden] { display: none !important; }"
+      ".driver-points-badge[hidden] { display: none !important; }",
+      ".driver-points-section-head { display: flex; align-items: center; justify-content: flex-start; gap: 8px; flex-wrap: wrap; }",
+      ".driver-points-section-head h3 { margin: 0; }",
+      ".driver-points-help-button { appearance: none; border: 1px solid rgba(23, 105, 210, 0.28); background: rgba(23, 105, 210, 0.08); color: var(--primary, #1769d2); border-radius: 10px; padding: 8px 14px; font-size: 0.9rem; font-weight: 700; cursor: pointer; }",
+      ".driver-points-help-button:active { transform: translateY(1px); }",
+      ".driver-points-help-dialog { width: min(480px, calc(100vw - 32px)); max-width: 100%; border: none; border-radius: 18px; padding: 0; background: #ffffff; color: #0f172a; box-shadow: 0 24px 80px rgba(15, 23, 42, 0.32); }",
+      ".driver-points-help-dialog::backdrop { background: rgba(15, 23, 42, 0.45); }",
+      ".driver-points-help-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 20px 12px; border-bottom: 1px solid rgba(148, 163, 184, 0.24); }",
+      ".driver-points-help-title { margin: 0; font-size: 1rem; font-weight: 800; line-height: 1.4; }",
+      ".driver-points-help-close { appearance: none; border: 1px solid rgba(148, 163, 184, 0.4); background: #ffffff; color: #334155; border-radius: 999px; min-width: 36px; min-height: 36px; padding: 0 12px; font-size: 0.9rem; font-weight: 700; cursor: pointer; }",
+      ".driver-points-help-body { padding: 16px 20px 20px; white-space: pre-line; line-height: 1.8; font-size: 0.95rem; color: #334155; }"
     ].join("\n");
     document.head.appendChild(style);
+  }
+
+  function closeHelpDialog() {
+    const dialog = document.getElementById("driverPointsHelpDialog");
+    if (!dialog) {
+      return;
+    }
+
+    if (typeof dialog.close === "function") {
+      dialog.close();
+      return;
+    }
+
+    dialog.removeAttribute("open");
+  }
+
+  function ensureHelpDialog() {
+    let dialog = document.getElementById("driverPointsHelpDialog");
+    if (dialog) {
+      return dialog;
+    }
+
+    ensureStyle();
+
+    dialog = document.createElement("dialog");
+    dialog.id = "driverPointsHelpDialog";
+    dialog.className = "driver-points-help-dialog";
+
+    const header = document.createElement("div");
+    header.className = "driver-points-help-header";
+
+    const title = document.createElement("h4");
+    title.className = "driver-points-help-title";
+    title.textContent = DRIVER_POINTS_HELP_TITLE;
+    header.appendChild(title);
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "driver-points-help-close";
+    closeButton.textContent = "閉じる";
+    closeButton.addEventListener("click", closeHelpDialog);
+    header.appendChild(closeButton);
+
+    const body = document.createElement("div");
+    body.className = "driver-points-help-body";
+    body.textContent = DRIVER_POINTS_HELP_MESSAGE;
+
+    dialog.appendChild(header);
+    dialog.appendChild(body);
+
+    dialog.addEventListener("click", (event) => {
+      const rect = dialog.getBoundingClientRect();
+      const isInside =
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom;
+
+      if (!isInside) {
+        closeHelpDialog();
+      }
+    });
+
+    document.body.appendChild(dialog);
+    return dialog;
+  }
+
+  function showHelpDialog() {
+    const dialog = ensureHelpDialog();
+    if (!dialog) {
+      window.alert(DRIVER_POINTS_HELP_MESSAGE);
+      return;
+    }
+
+    const title = dialog.querySelector(".driver-points-help-title");
+    if (title) {
+      title.textContent = DRIVER_POINTS_HELP_TITLE;
+    }
+
+    const body = dialog.querySelector(".driver-points-help-body");
+    if (body) {
+      body.textContent = DRIVER_POINTS_HELP_MESSAGE;
+    }
+
+    if (typeof dialog.showModal === "function") {
+      if (!dialog.open) {
+        dialog.showModal();
+      }
+      return;
+    }
+
+    dialog.setAttribute("open", "open");
   }
 
   function ensureBadgeElements() {
@@ -520,6 +631,130 @@
       driverName: normalizeDriverName(elements && elements.nameEl && elements.nameEl.textContent),
       vehicleNumber: normalizeVehicleNumber(elements && elements.vehicleEl && elements.vehicleEl.textContent)
     };
+  }
+
+  function ensureSettingsSection() {
+    const settingsFields = document.querySelector("#settingsForm .settings-fields");
+    if (!settingsFields) {
+      return null;
+    }
+
+    ensureStyle();
+
+    let section = document.getElementById("driverPointsSettingsSection");
+    if (section) {
+      return section;
+    }
+
+    section = document.createElement("section");
+    section.id = "driverPointsSettingsSection";
+    section.className = "settings-section";
+
+    const head = document.createElement("div");
+    head.className = "section-head";
+
+    const title = document.createElement("h3");
+    title.textContent = "ポイント付与機能";
+    head.appendChild(title);
+
+    const summary = document.createElement("p");
+    summary.innerHTML = [
+      "車番と乗務員が同じ組み合わせの時だけ同じポイントとして扱います。",
+      "今現在は給与等の評価にはなりません。個人でお楽しみください。",
+      "このポイントについての問題に関しては、当方では一切の責任は負えません。"
+    ].join("<br>");
+    head.appendChild(summary);
+
+    const field = document.createElement("label");
+    field.className = "field";
+
+    const label = document.createElement("span");
+    label.textContent = "機能切替";
+    field.appendChild(label);
+
+    const toggle = document.createElement("select");
+    toggle.id = "driverPointsFeatureToggle";
+    toggle.className = "field-select";
+    toggle.innerHTML = [
+      '<option value="off">OFF</option>',
+      '<option value="on">ON</option>'
+    ].join("");
+    field.appendChild(toggle);
+
+    section.appendChild(head);
+    section.appendChild(field);
+    settingsFields.appendChild(section);
+
+    toggle.addEventListener("change", (event) => {
+      setEnabled(String(event.target.value || "") === "on");
+    });
+
+    return section;
+  }
+
+  function renderSettingsSection() {
+    const section = ensureSettingsSection();
+    if (!section) {
+      return;
+    }
+
+    enhanceSettingsSection(section);
+
+    const toggle = document.getElementById("driverPointsFeatureToggle");
+    const enabled = isEnabled();
+
+    if (toggle) {
+      toggle.value = enabled ? "on" : "off";
+    }
+  }
+
+  function enhanceSettingsSection(section) {
+    if (!section) {
+      return;
+    }
+
+    const head = section.querySelector(".section-head");
+    if (head) {
+      head.classList.add("driver-points-section-head");
+    }
+
+    const title = head && head.querySelector("h3");
+    if (title) {
+      title.textContent = "ポイント付与機能";
+    }
+
+    const summary = head && head.querySelector("p");
+    if (summary) {
+      summary.remove();
+    }
+
+    const label = section.querySelector(".field > span");
+    if (label) {
+      label.textContent = "ポイント付与";
+    }
+
+    let helpButton = section.querySelector("#driverPointsHelpButton");
+    if (!helpButton) {
+      helpButton = document.createElement("button");
+      helpButton.type = "button";
+      helpButton.id = "driverPointsHelpButton";
+      helpButton.className = "driver-points-help-button";
+      helpButton.textContent = "ヘルプ";
+      helpButton.addEventListener("click", () => {
+        showHelpDialog();
+      });
+    }
+
+    if (helpButton) {
+      helpButton.textContent = "ヘルプ";
+      if (title) {
+        title.insertAdjacentElement("afterend", helpButton);
+      } else if (head && helpButton.parentElement !== head) {
+        head.appendChild(helpButton);
+      } else if (!head && helpButton.parentElement !== section) {
+        section.appendChild(helpButton);
+      }
+    }
   }
 
   function hideBadge() {
@@ -613,6 +848,7 @@
   }
 
   function syncLauncherUi(options = {}) {
+    renderSettingsSection();
     requestBadgeRefresh(options);
   }
 
@@ -623,6 +859,8 @@
     }
     uiState.mounted = true;
     ensureBadgeElements();
+    ensureSettingsSection();
+    renderSettingsSection();
     observeLauncherSelection();
     requestBadgeRefresh({ force: true, reason: "mount", delayMs: 0 });
   }
@@ -658,3 +896,4 @@
     bootUiWhenReady();
   }
 })();
+
