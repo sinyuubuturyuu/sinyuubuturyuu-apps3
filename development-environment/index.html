@@ -123,6 +123,18 @@
     </section>
   </main>
 
+  <script>
+    (function () {
+      const closePageButton = document.getElementById("closePageButton");
+      if (!closePageButton) {
+        return;
+      }
+      closePageButton.addEventListener("click", function () {
+        window.close();
+        window.location.href = "../index.html";
+      });
+    })();
+  </script>
   <script src="./checklist.js"></script>
 </body>
 </html>

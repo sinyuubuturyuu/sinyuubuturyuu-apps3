@@ -18,7 +18,7 @@
           <p class="lead">&#38283;&#30330;&#29872;&#22659;&#12408;&#12398;&#20999;&#26367;&#12434;&#32066;&#12360;&#12383;&#20316;&#26989;&#12502;&#12521;&#12531;&#12481;&#12434;&#12289;&#26412;&#30058; Firebase &#12395;&#25147;&#12375;&#12390;&#12363;&#12425; main &#12408;&#12510;&#12540;&#12472;&#12377;&#12427;&#12383;&#12417;&#12398;&#25163;&#38918;&#12391;&#12377;&#12290;&#12371;&#12371;&#12391;&#12399;&#26032;&#12375;&#12356;&#12502;&#12521;&#12531;&#12481;&#12399;&#20316;&#12425;&#12378;&#12289;&#29694;&#22312;&#12398;&#20316;&#26989;&#12502;&#12521;&#12531;&#12481;&#12434;&#12381;&#12398;&#12414;&#12414;&#20351;&#12356;&#12414;&#12377;&#12290;</p>
         </div>
         <div class="button-row compact">
-          <a class="button primary" href="../index.html">&#25147;&#12427;</a>
+          <button id="closePageButton" class="button primary" type="button">&#25147;&#12427;</button>
         </div>
       </div>
 
@@ -115,6 +115,18 @@
     </section>
   </main>
 
+  <script>
+    (function () {
+      const closePageButton = document.getElementById("closePageButton");
+      if (!closePageButton) {
+        return;
+      }
+      closePageButton.addEventListener("click", function () {
+        window.close();
+        window.location.href = "../index.html";
+      });
+    })();
+  </script>
   <script src="./checklist.js"></script>
 </body>
 </html>
