@@ -23,6 +23,7 @@ const APP_VERSION = "20260315-19";
 const MONTHLY_COMPLETE_IMAGE_SRC = "./icons/monthly-complete.png";
 const MONTHLY_COMPLETE_IMAGE_ALT = "今月分はすべて完了しました。明日もよろしくお願いします。";
 const sharedSettings = window.SharedLauncherSettings || null;
+const emulatorConnectedAppNames = new Set();
 
 const INSPECTION_GROUPS = [
   {
@@ -522,13 +523,14 @@ async function createStore() {
       ? getApp()
       : initializeApp(firebaseConfig);
     const auth = authModule.getAuth(app);
+    const db = firestoreModule.getFirestore(app);
+    connectLocalFirebaseEmulators(app, authModule, firestoreModule, auth, db);
     if (!auth.currentUser && typeof auth.authStateReady === "function") {
       await auth.authStateReady();
     }
     if (!auth.currentUser) {
       throw new Error("ログインしてください。");
     }
-    const db = firestoreModule.getFirestore(app);
     return createFirestoreStore(db, firestoreModule);
   } catch (error) {
     console.error(error);
@@ -1294,6 +1296,19 @@ function hasFirebaseConfig() {
     const value = firebaseConfig[key];
     return typeof value === "string" && value.trim() && !value.includes("YOUR_");
   });
+}
+
+function connectLocalFirebaseEmulators(app, authModule, firestoreModule, auth, db) {
+  if (
+    (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") ||
+    emulatorConnectedAppNames.has(app.name)
+  ) {
+    return;
+  }
+
+  firestoreModule.connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  authModule.connectAuthEmulator(auth, "http://127.0.0.1:9099");
+  emulatorConnectedAppNames.add(app.name);
 }
 
 function buildRecordId(month, vehicle, driver) {

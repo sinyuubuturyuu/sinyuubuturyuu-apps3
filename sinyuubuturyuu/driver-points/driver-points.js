@@ -43,6 +43,7 @@
     promise: null,
     featureStateInitialized: false
   };
+  const emulatorConnectedAppNames = new Set();
 
   function normalizeText(value) {
     return String(value ?? "").trim();
@@ -179,6 +180,19 @@
     return getFeatureState() === "on";
   }
 
+  function connectLocalFirebaseEmulators(app, authModule, firestoreModule, auth, db) {
+    if (
+      (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") ||
+      emulatorConnectedAppNames.has(app.name)
+    ) {
+      return;
+    }
+
+    firestoreModule.connectFirestoreEmulator(db, "127.0.0.1", 8080);
+    authModule.connectAuthEmulator(auth, "http://127.0.0.1:9099");
+    emulatorConnectedAppNames.add(app.name);
+  }
+
   function setEnabled(enabled) {
     ensureFeatureStateInitialized();
     window.localStorage.setItem(FEATURE_STORAGE_KEY, enabled ? "on" : "off");
@@ -258,6 +272,8 @@
       if (!auth) {
         auth = authModule.getAuth(app);
       }
+      const db = firestoreModule.getFirestore(app);
+      connectLocalFirebaseEmulators(app, authModule, firestoreModule, auth, db);
 
       if (!auth.currentUser && typeof auth.authStateReady === "function") {
         await auth.authStateReady();
@@ -267,7 +283,7 @@
       }
 
       return {
-        db: firestoreModule.getFirestore(app),
+        db,
         firestoreModule
       };
     })().catch((error) => {
@@ -892,4 +908,3 @@
     bootUiWhenReady();
   }
 })();
-

@@ -40,6 +40,7 @@
     saveTimer: null,
     flushing: false
   };
+  const emulatorConnectedAppNames = new Set();
 
   function log(message, extra) {
     if (extra === undefined) {
@@ -332,6 +333,19 @@
     return state.firebase.initializeApp(config, appName);
   }
 
+  function connectLocalFirebaseEmulators(app, auth, db) {
+    if (
+      (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") ||
+      emulatorConnectedAppNames.has(app.name)
+    ) {
+      return;
+    }
+
+    auth.useEmulator("http://127.0.0.1:9099");
+    db.useEmulator("127.0.0.1", 8080);
+    emulatorConnectedAppNames.add(app.name);
+  }
+
   function getSettingsDirectoryDocId(kind) {
     const syncOptions = window.APP_FIREBASE_DIRECTORY_SYNC_OPTIONS || {};
     const docIds = syncOptions.docIds || {};
@@ -397,6 +411,7 @@
 
       state.auth = state.firebase.auth();
       state.db = state.firebase.firestore();
+      connectLocalFirebaseEmulators(state.firebase.app(), state.auth, state.db);
       state.deviceId = getOrCreateDeviceId();
 
       if (!state.auth.currentUser && typeof state.auth.authStateReady === "function") {
@@ -445,6 +460,7 @@
       state.directoryApp = app;
       state.directoryAuth = auth;
       state.directoryDb = app.firestore();
+      connectLocalFirebaseEmulators(app, auth, state.directoryDb);
       state.uid = auth.currentUser.uid || state.uid || "";
       state.deviceId = state.deviceId || getOrCreateDeviceId();
       return true;

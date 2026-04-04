@@ -1,7 +1,8 @@
 ﻿import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getAuth, updateCurrentUser } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import { connectAuthEmulator, getAuth, updateCurrentUser } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   collection,
+  connectFirestoreEmulator,
   doc,
   getDoc,
   getDocs,
@@ -45,6 +46,7 @@ const EXCEL_STAMP_IMAGE_SIZES = {
   small: { width: 22, height: 22 }
 };
 let jsZipModulePromise = null;
+const emulatorConnectedAppNames = new Set();
 
 const firebaseConfig = window.APP_FIREBASE_CONFIG || {
   apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
@@ -187,12 +189,27 @@ function getReiwaYear(year) {
   return year >= 2019 ? year - 2018 : year;
 }
 
+function connectLocalFirebaseEmulators(app, dbInstance, authInstance) {
+  if (
+    (location.hostname !== "localhost" && location.hostname !== "127.0.0.1") ||
+    emulatorConnectedAppNames.has(app.name)
+  ) {
+    return;
+  }
+
+  connectFirestoreEmulator(dbInstance, "127.0.0.1", 8080);
+  connectAuthEmulator(authInstance, "http://127.0.0.1:9099");
+  emulatorConnectedAppNames.add(app.name);
+}
+
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
+connectLocalFirebaseEmulators(app, db, auth);
 const referenceApp = firebaseConfig.projectId === referenceFirebaseConfig.projectId ? app : initializeApp(referenceFirebaseConfig, "reference-app");
 const referenceDb = getFirestore(referenceApp);
 const referenceAuth = getAuth(referenceApp);
+connectLocalFirebaseEmulators(referenceApp, referenceDb, referenceAuth);
 
 function normalizeOptionValue(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -2547,6 +2564,4 @@ renderBody();
 renderBottomStampRow();
 syncToolbarWidth();
 loadReferenceOptions().catch((err) => setStatus(`候補一覧の取得に失敗しました: ${err.message}`, true));
-
-
 

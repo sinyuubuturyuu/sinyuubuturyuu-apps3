@@ -4,6 +4,7 @@
   const FIREBASE_VERSION = "12.10.0";
   const DEFAULT_WAIT_MS = 5000;
   let runtimePromise = null;
+  const emulatorConnectedAppNames = new Set();
 
   function getFirebaseConfig() {
     return window.APP_FIREBASE_CONFIG || window.APP_FIREBASE_DIRECTORY_CONFIG || {};
@@ -14,6 +15,18 @@
       const value = config && config[key];
       return typeof value === "string" && value.trim();
     });
+  }
+
+  function connectLocalAuthEmulator(app, authModule, auth) {
+    if (
+      (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") ||
+      emulatorConnectedAppNames.has(app.name)
+    ) {
+      return;
+    }
+
+    authModule.connectAuthEmulator(auth, "http://127.0.0.1:9099");
+    emulatorConnectedAppNames.add(app.name);
   }
 
   async function ensureRuntime() {
@@ -35,10 +48,12 @@
       const app = typeof getApps === "function" && getApps().length
         ? getApp()
         : initializeApp(config);
+      const auth = authModule.getAuth(app);
+      connectLocalAuthEmulator(app, authModule, auth);
 
       return {
         app,
-        auth: authModule.getAuth(app),
+        auth,
         authModule
       };
     })().catch((error) => {

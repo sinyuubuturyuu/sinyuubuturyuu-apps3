@@ -52,6 +52,7 @@
   ];
   const IMPORT_BASE_KEYS = ["inspectionDate", "vehicleNumber", "driverName", "truckType", "reportNote"];
   const sharedSettings = window.SharedAppSettings || null;
+  const emulatorConnectedAppNames = new Set();
 
   const ui = {
     fromYear: document.getElementById("filterFromYear"),
@@ -2077,6 +2078,19 @@
     return window.firebase.initializeApp(config, appName);
   }
 
+  function connectLocalFirebaseEmulators(app, auth, db) {
+    if (
+      (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") ||
+      emulatorConnectedAppNames.has(app.name)
+    ) {
+      return;
+    }
+
+    auth.useEmulator("http://127.0.0.1:9099");
+    db.useEmulator("127.0.0.1", 8080);
+    emulatorConnectedAppNames.add(app.name);
+  }
+
   function resolveFirebaseConfigScriptUrl() {
     const configuredScript = document.querySelector(FIREBASE_CONFIG_SCRIPT_SELECTOR);
     const rawSrc = configuredScript
@@ -2145,6 +2159,8 @@
     state.collection = syncOptions.collection || DEFAULT_COLLECTION;
 
     const auth = primaryApp.auth();
+    const primaryDb = primaryApp.firestore();
+    connectLocalFirebaseEmulators(primaryApp, auth, primaryDb);
     const authApi = window.DevFirebaseAuth;
     if (authApi && typeof authApi.ensureCompatUser === "function") {
       await authApi.ensureCompatUser(auth, { waitMs: 5000 });
@@ -2152,7 +2168,7 @@
       throw new Error("ログインしてください。");
     }
 
-    state.db = primaryApp.firestore();
+    state.db = primaryDb;
     state.settingsDb = state.db;
     state.settingsCollection = state.collection;
 
@@ -2168,13 +2184,15 @@
         directorySyncOptions.appName || "sinyuubuturyuu-directory"
       );
       const directoryAuth = directoryApp.auth();
+      const directoryDb = directoryApp.firestore();
+      connectLocalFirebaseEmulators(directoryApp, directoryAuth, directoryDb);
       if (authApi && typeof authApi.ensureCompatUser === "function") {
         await authApi.ensureCompatUser(directoryAuth, { waitMs: 5000 });
       } else if (!directoryAuth.currentUser) {
         throw new Error("ログインしてください。");
       }
 
-      state.settingsDb = directoryApp.firestore();
+      state.settingsDb = directoryDb;
       state.settingsCollection = directorySyncOptions.collection || DEFAULT_COLLECTION;
     } catch (error) {
       console.warn("Failed to initialize employee directory settings source:", error);

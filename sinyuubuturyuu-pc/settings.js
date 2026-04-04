@@ -67,6 +67,7 @@
     directoryError: "",
     working: false
   };
+  const emulatorConnectedAppNames = new Set();
 
   bindEvents();
   render();
@@ -348,6 +349,8 @@
   async function ensureDb(config, syncOptions, appName) {
     const app = getOrCreateFirebaseApp(config, appName);
     const auth = app.auth();
+    const db = app.firestore();
+    connectLocalFirebaseEmulators(app, auth, db);
     const authApi = window.DevFirebaseAuth;
 
     if (authApi && typeof authApi.ensureCompatUser === "function") {
@@ -356,7 +359,7 @@
       throw new Error("ログインしてください。");
     }
 
-    return app.firestore();
+    return db;
   }
 
   function getCollectionName() {
@@ -390,6 +393,19 @@
     }
 
     return window.firebase.initializeApp(config, appName);
+  }
+
+  function connectLocalFirebaseEmulators(app, auth, db) {
+    if (
+      (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") ||
+      emulatorConnectedAppNames.has(app.name)
+    ) {
+      return;
+    }
+
+    auth.useEmulator("http://127.0.0.1:9099");
+    db.useEmulator("127.0.0.1", 8080);
+    emulatorConnectedAppNames.add(app.name);
   }
 
   function getDocId(definition, syncOptions) {

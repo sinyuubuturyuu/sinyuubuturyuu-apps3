@@ -574,6 +574,7 @@ function sortReferenceRows(rows, labelFor = (value) => String(value || "")) {
 }
 
 let referenceSettingsRuntimePromise = null;
+const emulatorConnectedAppNames = new Set();
 
 async function getReferenceSettingsRuntime() {
   if (referenceSettingsRuntimePromise) {
@@ -590,11 +591,14 @@ async function getReferenceSettingsRuntime() {
     const app = typeof appModule.getApps === "function" && appModule.getApps().length
       ? appModule.getApp()
       : appModule.initializeApp(REFERENCE_FIREBASE_CONFIG);
+    const auth = authModule.getAuth(app);
+    const db = firestoreModule.getFirestore(app);
+    connectLocalFirebaseEmulators(app, authModule, firestoreModule, auth, db);
 
     return {
-      auth: authModule.getAuth(app),
+      auth,
       authModule,
-      db: firestoreModule.getFirestore(app),
+      db,
       firestoreModule,
     };
   })().catch((error) => {
@@ -603,6 +607,19 @@ async function getReferenceSettingsRuntime() {
   });
 
   return referenceSettingsRuntimePromise;
+}
+
+function connectLocalFirebaseEmulators(app, authModule, firestoreModule, auth, db) {
+  if (
+    (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") ||
+    emulatorConnectedAppNames.has(app.name)
+  ) {
+    return;
+  }
+
+  firestoreModule.connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  authModule.connectAuthEmulator(auth, "http://127.0.0.1:9099");
+  emulatorConnectedAppNames.add(app.name);
 }
 
 async function ensureReferenceSettingsAuth(runtime) {
@@ -1364,13 +1381,14 @@ async function listDailyInspectionRecords(vehicle, driver) {
     ? getApp()
     : initializeApp(runtime.firebaseConfig);
   const auth = authModule.getAuth(app);
+  const db = firestoreModule.getFirestore(app);
+  connectLocalFirebaseEmulators(app, authModule, firestoreModule, auth, db);
   if (!auth.currentUser && typeof auth.authStateReady === "function") {
     await auth.authStateReady();
   }
   if (!auth.currentUser) {
     throw new Error("ログインしてください。");
   }
-  const db = firestoreModule.getFirestore(app);
   const collectionName = String(runtime.appSettings.collectionName || "getujinitijyoutenkenhyou");
   const ref = firestoreModule.collection(db, collectionName);
   const queries = [
@@ -1572,8 +1590,6 @@ function registerServiceWorker() {
       });
   });
 }
-
-
 
 
 
