@@ -1200,7 +1200,7 @@
         if (reason === "offline") return "オフラインのためFirebaseに接続できません";
         if (reason === "firebase_unready") return "Firebaseの接続準備が完了していません";
         if (reason === "permission_denied") return "Firebase権限エラーです（Firestoreルールを確認してください）";
-        if (reason === "unauthenticated") return "匿名認証が無効です（Firebase Authenticationで匿名認証を有効化してください）";
+        if (reason === "unauthenticated") return "ログインが必要です（ログイン状態とFirebaseルールを確認してください）";
         if (reason === "failed_precondition") return "Firestore未作成の可能性があります（Firebase ConsoleでFirestoreを作成してください）";
         if (reason === "empty_values") return "バックアップ対象のデータがありません";
         if (mode === "save") return "バックアップ保存に失敗しました";

@@ -155,13 +155,12 @@
   async function ensureDb(config, settings, appName) {
     const app = getOrCreateFirebaseApp(config, appName);
     const auth = app.auth();
+    const authApi = window.DevFirebaseAuth;
 
-    if (settings.useAnonymousAuth !== false && !auth.currentUser) {
-      try {
-        await auth.signInAnonymously();
-      } catch (error) {
-        console.warn("Anonymous auth was not available:", error);
-      }
+    if (authApi && typeof authApi.ensureCompatUser === "function") {
+      await authApi.ensureCompatUser(auth, { waitMs: 5000 });
+    } else if (!auth.currentUser) {
+      throw new Error("ログインしてください。");
     }
 
     return app.firestore();

@@ -263,11 +263,7 @@
         await auth.authStateReady();
       }
       if (!auth.currentUser) {
-        try {
-          await authModule.signInAnonymously(auth);
-        } catch (error) {
-          throw new Error(`ログインしてください: ${error && error.message ? error.message : error}`);
-        }
+        throw new Error("ログインしてください。");
       }
 
       return {

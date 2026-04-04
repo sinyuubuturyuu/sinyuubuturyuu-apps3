@@ -399,15 +399,15 @@
       state.db = state.firebase.firestore();
       state.deviceId = getOrCreateDeviceId();
 
-      if (state.options.useAnonymousAuth !== false) {
-        try {
-          if (!state.auth.currentUser) await state.auth.signInAnonymously();
-        } catch (error) {
-          warn("Anonymous auth failed. Check Firestore/Auth rules.", error);
-        }
+      if (!state.auth.currentUser && typeof state.auth.authStateReady === "function") {
+        await state.auth.authStateReady();
+      }
+      if (!state.auth.currentUser) {
+        warn("Firebase auth user is missing. Sign in before using cloud sync.");
+        return false;
       }
 
-      state.uid = (state.auth.currentUser && state.auth.currentUser.uid) || "anon";
+      state.uid = state.auth.currentUser.uid || "";
       log("Firebase cloud sync initialized");
       return true;
     })().finally(() => {
@@ -434,18 +434,18 @@
       state.firebase = state.firebase || await ensureFirebaseSdk();
       const app = getOrCreateFirebaseApp(config, syncOptions.appName || "sinyuubuturyuu-directory");
       const auth = app.auth();
-      if (syncOptions.useAnonymousAuth !== false) {
-        try {
-          if (!auth.currentUser) await auth.signInAnonymously();
-        } catch (error) {
-          warn("Directory anonymous auth failed. Check Firestore/Auth rules.", error);
-        }
+      if (!auth.currentUser && typeof auth.authStateReady === "function") {
+        await auth.authStateReady();
+      }
+      if (!auth.currentUser) {
+        warn("Directory auth user is missing. Sign in before using directory sync.");
+        return false;
       }
 
       state.directoryApp = app;
       state.directoryAuth = auth;
       state.directoryDb = app.firestore();
-      state.uid = (auth.currentUser && auth.currentUser.uid) || state.uid || "anon";
+      state.uid = auth.currentUser.uid || state.uid || "";
       state.deviceId = state.deviceId || getOrCreateDeviceId();
       return true;
     })().finally(() => {
@@ -1164,7 +1164,6 @@
       settingsBackupCollection: "syainmeibo",
       documentPrefix: "getujitiretenkenhyou",
       companyCode: "company",
-      useAnonymousAuth: false,
       autoFlushIntervalMs: 15000
     }, window.APP_FIREBASE_SYNC_OPTIONS || {});
 

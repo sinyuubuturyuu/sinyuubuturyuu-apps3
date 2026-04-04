@@ -2145,8 +2145,11 @@
     state.collection = syncOptions.collection || DEFAULT_COLLECTION;
 
     const auth = primaryApp.auth();
-    if (syncOptions.useAnonymousAuth !== false && !auth.currentUser) {
-      await auth.signInAnonymously();
+    const authApi = window.DevFirebaseAuth;
+    if (authApi && typeof authApi.ensureCompatUser === "function") {
+      await authApi.ensureCompatUser(auth, { waitMs: 5000 });
+    } else if (!auth.currentUser) {
+      throw new Error("ログインしてください。");
     }
 
     state.db = primaryApp.firestore();
@@ -2165,8 +2168,10 @@
         directorySyncOptions.appName || "sinyuubuturyuu-directory"
       );
       const directoryAuth = directoryApp.auth();
-      if (directorySyncOptions.useAnonymousAuth !== false && !directoryAuth.currentUser) {
-        await directoryAuth.signInAnonymously();
+      if (authApi && typeof authApi.ensureCompatUser === "function") {
+        await authApi.ensureCompatUser(directoryAuth, { waitMs: 5000 });
+      } else if (!directoryAuth.currentUser) {
+        throw new Error("ログインしてください。");
       }
 
       state.settingsDb = directoryApp.firestore();
