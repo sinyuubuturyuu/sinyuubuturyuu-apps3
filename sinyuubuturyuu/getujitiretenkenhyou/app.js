@@ -593,7 +593,11 @@
 
       const saveCurrent = () => {
         current.updatedAt = new Date().toISOString();
-        localStorage.setItem(STORAGE.current, JSON.stringify(current));
+        localStorage.setItem(STORAGE.current, JSON.stringify({
+          ...current,
+          vehicleSelectionExplicit: Boolean(String(current.vehicleNumber || "").trim()),
+          driverSelectionExplicit: Boolean(normalizeDriverName(current.driverName))
+        }));
         scheduleCloudSync("input");
       };
       const savePrevious = () => {
