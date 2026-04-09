@@ -36,6 +36,22 @@
         EXPORT: "export",
         SETTINGS: "settings"
       };
+      const sharedSettings = window.SharedLauncherSettings || null;
+      const REFERENCE_FIREBASE_CONFIG = window.APP_FIREBASE_DIRECTORY_CONFIG || window.APP_FIREBASE_CONFIG || {};
+      const REFERENCE_SOURCE_KIND = Object.freeze({
+        VEHICLES: "vehicles",
+        DRIVERS: "drivers"
+      });
+      const REFERENCE_SOURCE_CONFIG = Object.freeze({
+        [REFERENCE_SOURCE_KIND.VEHICLES]: Object.freeze({
+          collection: String((window.APP_FIREBASE_DIRECTORY_SYNC_OPTIONS || {}).collection || "syainmeibo").trim() || "syainmeibo",
+          docId: String((((window.APP_FIREBASE_DIRECTORY_SYNC_OPTIONS || {}).docIds || {}).vehicles) || "monthly_tire_company_settings_backup_vehicles_slot1").trim() || "monthly_tire_company_settings_backup_vehicles_slot1"
+        }),
+        [REFERENCE_SOURCE_KIND.DRIVERS]: Object.freeze({
+          collection: String((window.APP_FIREBASE_DIRECTORY_SYNC_OPTIONS || {}).collection || "syainmeibo").trim() || "syainmeibo",
+          docId: String((((window.APP_FIREBASE_DIRECTORY_SYNC_OPTIONS || {}).docIds || {}).drivers) || "monthly_tire_company_settings_backup_drivers_slot1").trim() || "monthly_tire_company_settings_backup_drivers_slot1"
+        })
+      });
 
       const DISPLAY_MAP_12 = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩", "⑪", "⑫"];
       const DISPLAY_MAP_10 = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
@@ -536,6 +552,51 @@
         const sorted = sortTruckTypes(uniq);
         return sorted.length > 0 ? sorted : sortTruckTypes(TRUCK_TYPE_CATALOG.map((item) => item.value));
       };
+      const normalizeReferenceValues = (rows) => {
+        if (!Array.isArray(rows)) return [];
+        const uniq = [];
+        rows.forEach((item) => {
+          const value = String(item ?? "").trim();
+          if (!value || uniq.includes(value)) return;
+          uniq.push(value);
+        });
+        return uniq;
+      };
+      const getReferenceValueArray = (source, fieldName) => {
+        if (!source || typeof source !== "object") return [];
+        return normalizeReferenceValues(source[fieldName]);
+      };
+      const getReferenceValueArrayFromFieldNames = (source, fieldNames) => {
+        for (const fieldName of fieldNames) {
+          const values = getReferenceValueArray(source, fieldName);
+          if (values.length) {
+            return values;
+          }
+        }
+        return [];
+      };
+      const getVehicleProfilesFromSource = (source) => {
+        if (!sharedSettings) {
+          return [];
+        }
+        if (Array.isArray(source && source.vehicleProfiles)) {
+          return sharedSettings.normalizeVehicleProfiles(source.vehicleProfiles);
+        }
+        return sharedSettings.normalizeVehicleProfiles(
+          getReferenceValueArrayFromFieldNames(source, ["values", "vehicles", "vehicleNumbers", "車両番号", "車番"])
+        );
+      };
+      const getUserProfilesFromSource = (source) => {
+        if (!sharedSettings) {
+          return [];
+        }
+        if (Array.isArray(source && source.userProfiles)) {
+          return sharedSettings.normalizeUserProfiles(source.userProfiles);
+        }
+        return sharedSettings.normalizeUserProfiles(
+          getReferenceValueArrayFromFieldNames(source, ["values", "drivers", "driverNames", "乗務員名", "乗務員"])
+        );
+      };
       const emptyBackupMeta = () => ({
         [SETTINGS_BACKUP_KIND.VEHICLES]: null,
         [SETTINGS_BACKUP_KIND.DRIVERS]: null
@@ -547,6 +608,9 @@
       let vehicles = normalizeVehicles(read(STORAGE.vehicles, []));
       let drivers = normalizeDrivers(read(STORAGE.drivers, []));
       let truckTypes = normalizeTruckTypes(read(STORAGE.truckTypes, TRUCK_TYPE_CATALOG.map((item) => item.value)));
+      let referenceSettingsRuntimePromise = null;
+      let referenceProfilesLoading = false;
+      let referenceProfilesLoaded = false;
       const firstDriverName = () => drivers.length > 0 ? normalizeDriverName(drivers[0]) : "";
       const findDriverIndexByName = (name) => {
         const target = String(name ?? "").trim();
@@ -665,6 +729,141 @@
         return normalizeSubmittedMonthArray(submittedMonthCache[signature]);
       };
 
+      function syncSharedSnapshot(nextState) {
+        if (!sharedSettings || !nextState || typeof nextState !== "object") {
+          return;
+        }
+        vehicles = Array.isArray(nextState.vehicles) ? nextState.vehicles.slice() : [];
+        drivers = Array.isArray(nextState.drivers) ? nextState.drivers.slice() : [];
+        truckTypes = TRUCK_TYPE_CATALOG.map((item) => item.value);
+        current.loginId = sharedSettings.normalizeLoginId(nextState.current && nextState.current.loginId);
+        current.driverName = sharedSettings.normalizeDriverName(nextState.current && nextState.current.driverName);
+        current.vehicleNumber = sharedSettings.normalizeVehicleNumber(nextState.current && nextState.current.vehicleNumber);
+        current.truckType = sharedSettings.normalizeCurrentTruckType(nextState.current && nextState.current.truckType);
+      }
+
+      async function getReferenceSettingsRuntime() {
+        if (!sharedSettings) {
+          throw new Error("共通設定モジュールを読み込めませんでした。");
+        }
+        if (referenceSettingsRuntimePromise) {
+          return referenceSettingsRuntimePromise;
+        }
+
+        referenceSettingsRuntimePromise = (async () => {
+          const [appModule, authModule, firestoreModule] = await Promise.all([
+            import("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js"),
+            import("https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js"),
+            import("https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js")
+          ]);
+
+          const app = typeof appModule.getApps === "function" && appModule.getApps().length
+            ? appModule.getApp()
+            : appModule.initializeApp(REFERENCE_FIREBASE_CONFIG);
+
+          return {
+            auth: authModule.getAuth(app),
+            db: firestoreModule.getFirestore(app),
+            firestoreModule
+          };
+        })().catch((error) => {
+          referenceSettingsRuntimePromise = null;
+          throw error;
+        });
+
+        return referenceSettingsRuntimePromise;
+      }
+
+      async function ensureReferenceSettingsAuth(runtime) {
+        await requireAppLogin();
+        if (runtime.auth.currentUser) {
+          return runtime.auth.currentUser;
+        }
+        if (typeof runtime.auth.authStateReady === "function") {
+          await runtime.auth.authStateReady();
+        }
+        if (runtime.auth.currentUser) {
+          return runtime.auth.currentUser;
+        }
+        throw new Error("ログイン状態を確認できませんでした。");
+      }
+
+      async function loadReferenceProfilesFromFirebase(runtime) {
+        const vehicleConfig = REFERENCE_SOURCE_CONFIG[REFERENCE_SOURCE_KIND.VEHICLES];
+        const driverConfig = REFERENCE_SOURCE_CONFIG[REFERENCE_SOURCE_KIND.DRIVERS];
+        const { db, firestoreModule } = runtime;
+        const [vehicleSnapshot, driverSnapshot] = await Promise.all([
+          firestoreModule.getDoc(firestoreModule.doc(db, vehicleConfig.collection, vehicleConfig.docId)),
+          firestoreModule.getDoc(firestoreModule.doc(db, driverConfig.collection, driverConfig.docId))
+        ]);
+
+        return {
+          vehicleProfiles: vehicleSnapshot.exists()
+            ? getVehicleProfilesFromSource(vehicleSnapshot.data() || {})
+            : [],
+          userProfiles: driverSnapshot.exists()
+            ? getUserProfilesFromSource(driverSnapshot.data() || {})
+            : []
+        };
+      }
+
+      async function refreshReferenceProfiles() {
+        if (!sharedSettings) {
+          return null;
+        }
+
+        referenceProfilesLoading = true;
+        if (currentScreen === FLOW_SCREENS.SETTINGS) {
+          renderSettings();
+        }
+
+        try {
+          const runtime = await getReferenceSettingsRuntime();
+          await ensureReferenceSettingsAuth(runtime);
+          const referenceProfiles = await loadReferenceProfilesFromFirebase(runtime);
+          const currentState = sharedSettings.ensureState();
+          const nextState = sharedSettings.saveReferenceProfiles({
+            vehicleProfiles: referenceProfiles.vehicleProfiles.length ? referenceProfiles.vehicleProfiles : currentState.vehicleProfiles,
+            userProfiles: referenceProfiles.userProfiles.length ? referenceProfiles.userProfiles : currentState.userProfiles
+          });
+          syncSharedSnapshot(nextState);
+          referenceProfilesLoaded = true;
+          return nextState;
+        } catch (error) {
+          console.warn("Failed to load vehicle/user profiles:", error);
+          const fallbackState = sharedSettings.ensureState();
+          syncSharedSnapshot(fallbackState);
+          return fallbackState;
+        } finally {
+          referenceProfilesLoading = false;
+          if (currentScreen === FLOW_SCREENS.SETTINGS) {
+            renderSettings();
+          }
+        }
+      }
+
+      async function applyLoginAssignmentForUser(user) {
+        if (!sharedSettings) {
+          return;
+        }
+        const loginId = sharedSettings.normalizeLoginId(user && user.email);
+        const currentState = await refreshReferenceProfiles();
+        if (!loginId) {
+          if (currentState) {
+            syncSharedSnapshot(currentState);
+          }
+          return;
+        }
+
+        const nextState = sharedSettings.applyLoginAssignment(loginId);
+        syncSharedSnapshot(nextState);
+        saveCurrent();
+
+        if (!sharedSettings.getUserProfileByLoginId(loginId, nextState)) {
+          showToast("このログインIDに紐づく設定がありません。パソコン用の設定で登録してください");
+        }
+      }
+
       function cleanupLegacyExportDirectoryStorage() {
         localStorage.removeItem("tire.monthly.export.dirname.v1");
         if (!("indexedDB" in window)) return;
@@ -675,18 +874,22 @@
         }
       }
 
-      current.driverName = resolveRegisteredDriverName(current.driverName);
-      if (current.vehicleNumber && !vehicles.includes(current.vehicleNumber)) {
-        vehicles.unshift(current.vehicleNumber);
-        saveVehicles();
-      }
-      if (current.driverName && !hasDriverName(current.driverName)) {
-        drivers = normalizeDrivers(drivers.concat(current.driverName));
-        saveDrivers();
-      }
-      if (!truckTypes.includes(current.truckType)) {
-        current.truckType = truckTypes[0] || TRUCK_TYPES.LOW12;
-        saveCurrent();
+      if (sharedSettings) {
+        syncSharedSnapshot(sharedSettings.ensureState());
+      } else {
+        current.driverName = resolveRegisteredDriverName(current.driverName);
+        if (current.vehicleNumber && !vehicles.includes(current.vehicleNumber)) {
+          vehicles.unshift(current.vehicleNumber);
+          saveVehicles();
+        }
+        if (current.driverName && !hasDriverName(current.driverName)) {
+          drivers = normalizeDrivers(drivers.concat(current.driverName));
+          saveDrivers();
+        }
+        if (!truckTypes.includes(current.truckType)) {
+          current.truckType = truckTypes[0] || TRUCK_TYPES.LOW12;
+          saveCurrent();
+        }
       }
 
       const fillCount = (obj, fields) => fields.reduce((sum, f) => sum + (obj[f.key] ? 1 : 0), 0);
@@ -948,17 +1151,27 @@
 
       function renderVehicleList() {
         el.vehicleList.innerHTML = "";
-        if (vehicles.length === 0) {
+        const rows = vehicles.slice();
+        const currentVehicle = String(current.vehicleNumber || "").trim();
+        if (currentVehicle && !rows.includes(currentVehicle)) {
+          rows.unshift(currentVehicle);
+        }
+        if (referenceProfilesLoading && !referenceProfilesLoaded && !rows.length) {
+          el.vehicleList.innerHTML = '<div class="empty">車両番号を読み込み中です。</div>';
+          return;
+        }
+        if (rows.length === 0) {
           el.vehicleList.innerHTML = '<div class="empty">登録済み車両番号はありません。</div>';
           return;
         }
 
-        vehicles.forEach((vehicle) => {
+        rows.forEach((vehicle) => {
           const row = document.createElement("div");
           row.className = "vehicle-item";
 
           const label = document.createElement("span");
-          label.textContent = vehicle;
+          const truckType = sharedSettings ? sharedSettings.getTruckTypeForVehicle(vehicle, sharedSettings.ensureState()) : "";
+          label.textContent = truckType ? `${vehicle} / ${truckTypeLabel(truckType)}` : vehicle;
 
           const actions = document.createElement("div");
           actions.className = "vehicle-item-actions";
@@ -966,127 +1179,59 @@
           const show = document.createElement("button");
           show.type = "button";
           show.className = `mini-btn show-btn${current.vehicleNumber === vehicle ? " active" : ""}`;
-          show.textContent = "決定";
+          show.textContent = current.vehicleNumber === vehicle ? "選択中" : "変更";
           show.dataset.vehicle = vehicle;
           show.dataset.action = "show";
           show.setAttribute("aria-pressed", current.vehicleNumber === vehicle ? "true" : "false");
 
-          const remove = document.createElement("button");
-          remove.type = "button";
-          remove.className = "mini-btn";
-          remove.textContent = "削除";
-          remove.dataset.vehicle = vehicle;
-          remove.dataset.action = "remove";
-
           row.appendChild(label);
           actions.appendChild(show);
-          actions.appendChild(remove);
           row.appendChild(actions);
           el.vehicleList.appendChild(row);
         });
       }
 
       function renderDriverList() {
-        const orderedDrivers = normalizeDrivers(drivers);
-        if (!isSameStringArray(drivers, orderedDrivers)) {
-          drivers = orderedDrivers;
-          saveDrivers();
-        }
-
         el.driverList.innerHTML = "";
-        if (orderedDrivers.length === 0) {
-          el.driverList.innerHTML = '<div class="empty">登録済み乗務員はありません。</div>';
+        if (!current.driverName) {
+          el.driverList.innerHTML = '<div class="empty">ログインIDに紐づく乗務員設定がありません。</div>';
           return;
         }
 
-        orderedDrivers.forEach((driver) => {
-          const driverName = normalizeDriverName(driver);
-          const row = document.createElement("div");
-          row.className = "vehicle-item";
+        const row = document.createElement("div");
+        row.className = "vehicle-item";
 
-          const label = document.createElement("span");
-          label.textContent = driverName;
+        const label = document.createElement("span");
+        label.textContent = current.driverName;
 
-          const actions = document.createElement("div");
-          actions.className = "vehicle-item-actions";
-
-          const show = document.createElement("button");
-          show.type = "button";
-          show.className = `mini-btn show-btn${current.driverName === driverName ? " active" : ""}`;
-          show.textContent = "決定";
-          show.dataset.driver = driver;
-          show.dataset.action = "show";
-          show.setAttribute("aria-pressed", current.driverName === driverName ? "true" : "false");
-
-          const remove = document.createElement("button");
-          remove.type = "button";
-          remove.className = "mini-btn";
-          remove.textContent = "削除";
-          remove.dataset.driver = driver;
-          remove.dataset.action = "remove";
-
-          row.appendChild(label);
-          actions.appendChild(show);
-          actions.appendChild(remove);
-          row.appendChild(actions);
-          el.driverList.appendChild(row);
-        });
+        row.appendChild(label);
+        el.driverList.appendChild(row);
       }
 
       function renderTruckTypeCatalogSelect() {
-        const options = TRUCK_TYPE_CATALOG.filter((item) => !truckTypes.includes(item.value));
+        if (!el.newTruckType) return;
         el.newTruckType.innerHTML = "";
-        if (options.length === 0) {
-          el.newTruckType.appendChild(new Option("登録可能な車種はありません", ""));
-          el.newTruckType.value = "";
-          el.addTruckTypeBtn.disabled = true;
-          return;
-        }
-        el.newTruckType.appendChild(new Option("選択してください", ""));
-        options.forEach((item) => {
-          el.newTruckType.appendChild(new Option(item.label, item.value));
-        });
+        el.newTruckType.appendChild(new Option("車種はパソコン用の設定で管理します", ""));
         el.newTruckType.value = "";
-        el.addTruckTypeBtn.disabled = false;
+        if (el.addTruckTypeBtn) {
+          el.addTruckTypeBtn.disabled = true;
+        }
       }
 
       function renderTruckTypeList() {
         el.truckTypeList.innerHTML = "";
-        if (truckTypes.length === 0) {
-          el.truckTypeList.innerHTML = '<div class="empty">登録済み車種はありません。</div>';
+        if (!current.truckType) {
+          el.truckTypeList.innerHTML = '<div class="empty">車番に紐づく車種を表示します。</div>';
           return;
         }
-        truckTypes.forEach((truckType) => {
-          const row = document.createElement("div");
-          row.className = "vehicle-item";
+        const row = document.createElement("div");
+        row.className = "vehicle-item";
 
-          const label = document.createElement("span");
-          label.textContent = truckTypeLabel(truckType);
+        const label = document.createElement("span");
+        label.textContent = truckTypeLabel(current.truckType);
 
-          const actions = document.createElement("div");
-          actions.className = "vehicle-item-actions";
-
-          const show = document.createElement("button");
-          show.type = "button";
-          show.className = `mini-btn show-btn${current.truckType === truckType ? " active" : ""}`;
-          show.textContent = "決定";
-          show.dataset.truckType = truckType;
-          show.dataset.action = "show";
-          show.setAttribute("aria-pressed", current.truckType === truckType ? "true" : "false");
-
-          const remove = document.createElement("button");
-          remove.type = "button";
-          remove.className = "mini-btn";
-          remove.textContent = "削除";
-          remove.dataset.truckType = truckType;
-          remove.dataset.action = "remove";
-
-          row.appendChild(label);
-          actions.appendChild(show);
-          actions.appendChild(remove);
-          row.appendChild(actions);
-          el.truckTypeList.appendChild(row);
-        });
+        row.appendChild(label);
+        el.truckTypeList.appendChild(row);
       }
 
       function normalizeBackupKind(kind) {
@@ -1391,9 +1536,7 @@
         if (el.settingsUpdatedAt) el.settingsUpdatedAt.textContent = `更新: ${latestCommitPushedAt}`;
         renderVehicleList();
         renderDriverList();
-        renderTruckTypeCatalogSelect();
         renderTruckTypeList();
-        renderSettingsBackups();
       }
 
       function renderMeta() {
@@ -1545,7 +1688,9 @@
         void refreshLatestCommitPushedAt();
         renderSettings();
         setFlowScreen(FLOW_SCREENS.SETTINGS);
-        void refreshSettingsBackups();
+        void refreshReferenceProfiles().then(() => {
+          renderAll();
+        });
       }
 
       function closeSettingsDialog() {
@@ -1890,11 +2035,16 @@
         const truckType = current.truckType;
         const driverName = current.driverName;
         const vehicleNumber = current.vehicleNumber;
+        const loginId = current.loginId || "";
         closeDialog();
         current = defaultCurrent();
-        current.truckType = truckTypes.includes(truckType) ? truckType : (truckTypes[0] || TRUCK_TYPES.LOW12);
-        current.driverName = hasDriverName(driverName) ? resolveRegisteredDriverName(driverName) : "";
+        current.loginId = loginId;
+        current.truckType = truckTypes.includes(truckType) ? truckType : "";
+        current.driverName = sharedSettings ? normalizeDriverName(driverName) : (hasDriverName(driverName) ? resolveRegisteredDriverName(driverName) : "");
         current.vehicleNumber = vehicles.includes(vehicleNumber) ? vehicleNumber : "";
+        if (sharedSettings && current.vehicleNumber) {
+          current.truckType = sharedSettings.getTruckTypeForVehicle(current.vehicleNumber, sharedSettings.ensureState()) || current.truckType;
+        }
         saveCurrent();
         buildTires();
         currentScreen = FLOW_SCREENS.BASIC;
@@ -2057,11 +2207,23 @@
       }
 
       function setVehicleNumber(number) {
-        const next = String(number || "").trim();
+        const next = sharedSettings
+          ? sharedSettings.normalizeVehicleNumber(number)
+          : String(number || "").trim();
         if (next && !vehicles.includes(next)) return;
         if (current.vehicleNumber === next) return;
-        current.vehicleNumber = next;
+        const previousTruckType = current.truckType;
+        if (sharedSettings) {
+          const nextState = sharedSettings.updateCurrent({ vehicleNumber: next });
+          syncSharedSnapshot(nextState);
+        } else {
+          current.vehicleNumber = next;
+        }
         saveCurrent();
+        if (previousTruckType !== current.truckType) {
+          closeDialog();
+          buildTires();
+        }
         renderAll();
         void refreshAvailableMonths();
         void refreshPreviousFromCloud();
@@ -2083,173 +2245,27 @@
       }
 
       function addVehicleNumber() {
-        const value = String(el.newVehicleNumber.value || "").trim();
-        if (!value) {
-          showToast("車両番号を入力してください");
-          return;
-        }
-        if (vehicles.includes(value)) {
-          showToast("同じ車両番号は登録済みです");
-          return;
-        }
-
-        vehicles.push(value);
-        vehicles.sort((a, b) => a.localeCompare(b, "ja"));
-        saveVehicles();
-
-        if (!current.vehicleNumber) {
-          current.vehicleNumber = value;
-          saveCurrent();
-          void refreshAvailableMonths();
-          void refreshPreviousFromCloud();
-        }
-
-        el.newVehicleNumber.value = "";
-        renderAll();
-        showToast("車両番号を登録しました");
+        showToast("車両マスタはパソコン用の設定で変更してください");
       }
 
       function removeVehicleNumber(value) {
-        const index = vehicles.indexOf(value);
-        if (index < 0) return;
-        if (!window.confirm(`「${value}」を削除しますか？`)) return;
-
-        vehicles.splice(index, 1);
-        saveVehicles();
-
-        if (current.vehicleNumber === value) {
-          current.vehicleNumber = vehicles[0] || "";
-          saveCurrent();
-          void refreshAvailableMonths();
-          void refreshPreviousFromCloud();
-        }
-
-        renderAll();
-        showToast("車両番号を削除しました");
+        showToast("車両マスタはパソコン用の設定で変更してください");
       }
 
       function addDriverName() {
-        const rawName = String(el.newDriverName.value || "").trim();
-        const rawReading = String(el.newDriverReading.value || "").trim();
-        const parsedName = parseDriverEntry(rawName);
-        const driverName = normalizeDriverName(parsedName.name || rawName);
-        if (!driverName) {
-          showToast("乗務員名（漢字）を入力してください");
-          return;
-        }
-        const readingSource = rawReading || parsedName.reading;
-        if (!normalizeDriverReading(readingSource)) {
-          showToast("読み仮名（ひらがな）を入力してください");
-          el.newDriverReading.focus();
-          return;
-        }
-        const normalizedEntry = normalizeDriverEntry(
-          readingSource ? `${driverName}（${readingSource}）` : driverName
-        );
-
-        const sameNameIndex = findDriverIndexByName(driverName);
-        if (sameNameIndex >= 0) {
-          const existingEntry = drivers[sameNameIndex];
-          if (existingEntry === normalizedEntry) {
-            showToast("同じ乗務員は登録済みです");
-            return;
-          }
-          drivers.splice(sameNameIndex, 1, normalizedEntry);
-          drivers = normalizeDrivers(drivers);
-          saveDrivers();
-          el.newDriverName.value = "";
-          el.newDriverReading.value = "";
-          renderAll();
-          showToast("乗務員の読みを更新しました");
-          return;
-        }
-
-        drivers = normalizeDrivers(drivers.concat(normalizedEntry));
-        saveDrivers();
-
-        if (!current.driverName) {
-          current.driverName = driverName;
-          saveCurrent();
-          void refreshAvailableMonths();
-          void refreshPreviousFromCloud();
-        }
-
-        el.newDriverName.value = "";
-        el.newDriverReading.value = "";
-        renderAll();
-        showToast("乗務員を登録しました");
+        showToast("乗務員マスタはパソコン用の設定で変更してください");
       }
 
       function removeDriverName(value) {
-        const index = drivers.indexOf(value);
-        if (index < 0) return;
-        const targetName = normalizeDriverName(value);
-        if (!window.confirm(`「${targetName}」を削除しますか？`)) return;
-
-        drivers.splice(index, 1);
-        saveDrivers();
-
-        if (current.driverName === targetName) {
-          current.driverName = firstDriverName();
-          saveCurrent();
-          void refreshAvailableMonths();
-          void refreshPreviousFromCloud();
-        }
-
-        renderAll();
-        showToast("乗務員を削除しました");
+        showToast("乗務員マスタはパソコン用の設定で変更してください");
       }
 
       function addTruckType() {
-        const value = String(el.newTruckType.value || "").trim();
-        if (!value) {
-          showToast("車種を選択してください");
-          return;
-        }
-        if (truckTypes.includes(value)) {
-          showToast("同じ車種は登録済みです");
-          return;
-        }
-
-        truckTypes = sortTruckTypes(truckTypes.concat(value));
-        saveTruckTypes();
-
-        if (!truckTypes.includes(current.truckType)) {
-          current.truckType = value;
-          saveCurrent();
-          closeDialog();
-          buildTires();
-          void refreshPreviousFromCloud();
-        }
-
-        renderAll();
-        showToast("車種を登録しました");
+        showToast("車種マスタはパソコン用の設定で変更してください");
       }
 
       function removeTruckType(value) {
-        const index = truckTypes.indexOf(value);
-        if (index < 0) return;
-        if (truckTypes.length <= 1) {
-          showToast("車種は1件以上登録してください");
-          return;
-        }
-        if (!window.confirm(`「${truckTypeLabel(value)}」を削除しますか？`)) return;
-
-        truckTypes.splice(index, 1);
-        truckTypes = sortTruckTypes(truckTypes);
-        saveTruckTypes();
-
-        if (current.truckType === value) {
-          current.truckType = truckTypes[0] || TRUCK_TYPES.LOW12;
-          saveCurrent();
-          closeDialog();
-          buildTires();
-          void refreshAvailableMonths();
-          void refreshPreviousFromCloud();
-        }
-
-        renderAll();
-        showToast("車種を削除しました");
+        showToast("車種マスタはパソコン用の設定で変更してください");
       }
 
       function buildTires() {
@@ -2475,6 +2491,9 @@
       async function init() {
         const user = await requireAppLogin();
         if (!user) return;
+        if (sharedSettings) {
+          await applyLoginAssignmentForUser(user);
+        }
         if (window.FirebaseCloudSync && typeof window.FirebaseCloudSync.init === "function") {
           void (async () => {
             await window.FirebaseCloudSync.init({
@@ -2488,9 +2507,11 @@
         initTheme();
         bindMobileFitScale();
         if (!current.inspectionDate) current.inspectionDate = today();
-        if (!current.driverName && drivers.length > 0) current.driverName = firstDriverName();
-        if (!current.vehicleNumber && vehicles.length > 0) current.vehicleNumber = vehicles[0];
-        if (!truckTypes.includes(current.truckType)) current.truckType = truckTypes[0] || TRUCK_TYPES.LOW12;
+        if (!sharedSettings) {
+          if (!current.driverName && drivers.length > 0) current.driverName = firstDriverName();
+          if (!current.vehicleNumber && vehicles.length > 0) current.vehicleNumber = vehicles[0];
+          if (!truckTypes.includes(current.truckType)) current.truckType = truckTypes[0] || TRUCK_TYPES.LOW12;
+        }
         current.targetMonth = normalizeMonthKey(current.targetMonth) || monthKeyFromDateText(current.inspectionDate) || currentMonthKey();
         current.inspectionDate = normalizeInspectionDateForMonth(current.inspectionDate, current.targetMonth);
         currentScreen = FLOW_SCREENS.BASIC;

@@ -7,7 +7,7 @@
   <script>
     (function () {
       const versionSync = window.SinyuubuturyuuPcVersion || null;
-      const version = versionSync ? versionSync.getVersion("20260330a") : "20260330a";
+      const version = versionSync ? versionSync.getVersion("20260409a") : "20260409a";
       const targetUrl = new URL("./src/index.html", window.location.href);
       targetUrl.search = window.location.search;
       targetUrl.searchParams.set("v", version);
@@ -21,7 +21,7 @@
   <script>
     (function () {
       const versionSync = window.SinyuubuturyuuPcVersion || null;
-      const version = versionSync ? versionSync.getVersion("20260330a") : "20260330a";
+      const version = versionSync ? versionSync.getVersion("20260409a") : "20260409a";
       const fallbackLink = document.getElementById("openAppLink");
       if (!fallbackLink) {
         return;

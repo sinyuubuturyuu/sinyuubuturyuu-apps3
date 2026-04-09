@@ -1,49 +1,41 @@
-﻿(function () {
+(function () {
   "use strict";
 
   const sharedSettings = window.SharedAppSettings;
   const VEHICLE_BACKUP = Object.freeze({
     kind: "vehicles",
     docId: "monthly_tire_company_settings_backup_vehicles_slot1",
-    label: "車両番号"
+    label: "車両番号",
+    profilesFieldName: "vehicleProfiles"
   });
   const DRIVER_BACKUP = Object.freeze({
     kind: "drivers",
     docId: "monthly_tire_company_settings_backup_drivers_slot1",
-    label: "運転者名"
+    label: "運転者設定",
+    profilesFieldName: "userProfiles"
   });
   const DEFAULT_COLLECTION = "syainmeibo";
   const BACKUP_VALUE_FIELDS = Object.freeze({
-    vehicles: Object.freeze([
-      "values",
-      "vehicles",
-      "vehicleNumbers",
-      "\u8eca\u4e21\u756a\u53f7",
-      "\u8eca\u756a"
-    ]),
-    drivers: Object.freeze([
-      "values",
-      "drivers",
-      "driverNames",
-      "\u904b\u8ee2\u8005",
-      "\u904b\u8ee2\u8005\u540d",
-      "\u4e57\u52d9\u54e1",
-      "\u4e57\u52d9\u54e1\u540d",
-      "\u4e57\u52d9\u54e1\u540d\u7c3f"
-    ])
+    vehicles: Object.freeze(["values", "vehicles", "vehicleNumbers", "車両番号", "車番"]),
+    drivers: Object.freeze(["values", "drivers", "driverNames", "運転者", "運転者名", "乗務員", "乗務員名", "乗務員名簿"])
   });
 
   const elements = {
     vehicleInput: document.getElementById("vehicleInput"),
+    vehicleTruckTypeInput: document.getElementById("vehicleTruckTypeInput"),
     addVehicleButton: document.getElementById("addVehicleButton"),
+    cancelVehicleEditButton: document.getElementById("cancelVehicleEditButton"),
     saveVehiclesButton: document.getElementById("saveVehiclesButton"),
     restoreVehiclesButton: document.getElementById("restoreVehiclesButton"),
     deleteVehiclesButton: document.getElementById("deleteVehiclesButton"),
     vehicleLocalStatus: document.getElementById("vehicleLocalStatus"),
     vehicleBackupStatus: document.getElementById("vehicleBackupStatus"),
+    driverLoginIdInput: document.getElementById("driverLoginIdInput"),
     driverNameInput: document.getElementById("driverNameInput"),
     driverReadingInput: document.getElementById("driverReadingInput"),
+    driverVehicleSelect: document.getElementById("driverVehicleSelect"),
     addDriverButton: document.getElementById("addDriverButton"),
+    cancelDriverEditButton: document.getElementById("cancelDriverEditButton"),
     saveDriversButton: document.getElementById("saveDriversButton"),
     restoreDriversButton: document.getElementById("restoreDriversButton"),
     deleteDriversButton: document.getElementById("deleteDriversButton"),
@@ -56,16 +48,17 @@
 
   const state = {
     shared: sharedSettings.ensureState(),
-    backupMeta: {
-      vehicles: null,
-      drivers: null
-    },
+    backupMeta: { vehicles: null, drivers: null },
     cloudReady: false,
     directoryEnabled: false,
     db: null,
     directoryDb: null,
     directoryError: "",
-    working: false
+    working: false,
+    editing: {
+      vehicleNumber: "",
+      userKey: ""
+    }
   };
 
   bindEvents();
@@ -73,30 +66,20 @@
   void initializeCloud();
 
   function bindEvents() {
-    elements.addVehicleButton.addEventListener("click", addVehicle);
+    elements.addVehicleButton.addEventListener("click", addOrUpdateVehicle);
+    elements.cancelVehicleEditButton.addEventListener("click", cancelVehicleEdit);
     elements.vehicleInput.addEventListener("keydown", function (event) {
-      if (event.key !== "Enter") {
-        return;
-      }
+      if (event.key !== "Enter") return;
       event.preventDefault();
-      addVehicle();
+      addOrUpdateVehicle();
     });
 
-    elements.addDriverButton.addEventListener("click", addDriver);
-    elements.driverNameInput.addEventListener("keydown", function (event) {
-      if (event.key !== "Enter") {
-        return;
-      }
-      event.preventDefault();
-      addDriver();
-    });
-    elements.driverReadingInput.addEventListener("keydown", function (event) {
-      if (event.key !== "Enter") {
-        return;
-      }
-      event.preventDefault();
-      addDriver();
-    });
+    elements.addDriverButton.addEventListener("click", addOrUpdateDriver);
+    elements.cancelDriverEditButton.addEventListener("click", cancelDriverEdit);
+    elements.driverLoginIdInput.addEventListener("keydown", submitDriverOnEnter);
+    elements.driverNameInput.addEventListener("keydown", submitDriverOnEnter);
+    elements.driverReadingInput.addEventListener("keydown", submitDriverOnEnter);
+    elements.driverVehicleSelect.addEventListener("keydown", submitDriverOnEnter);
 
     elements.saveVehiclesButton.addEventListener("click", function () {
       void saveBackup(VEHICLE_BACKUP);
@@ -115,6 +98,12 @@
     elements.deleteDriversButton.addEventListener("click", clearAllDrivers);
   }
 
+  function submitDriverOnEnter(event) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    addOrUpdateDriver();
+  }
+
   function refreshSharedState() {
     state.shared = sharedSettings.ensureState();
   }
@@ -127,21 +116,121 @@
 
   function render() {
     refreshSharedState();
-
-    elements.vehicleLocalStatus.textContent = "ローカル登録数: " + state.shared.vehicles.length + "件";
-    elements.driverLocalStatus.textContent = "ローカル登録数: " + state.shared.drivers.length + "件";
-
-    renderValueList(elements.vehicleList, state.shared.vehicles, removeVehicle);
-    renderValueList(elements.driverList, state.shared.drivers, removeDriver);
+    renderVehicleForm();
+    renderDriverForm();
+    renderVehicleList();
+    renderDriverList();
     renderBackupStatus(VEHICLE_BACKUP, elements.vehicleBackupStatus);
     renderBackupStatus(DRIVER_BACKUP, elements.driverBackupStatus);
+    elements.vehicleLocalStatus.textContent = "ローカル登録数: " + state.shared.vehicleProfiles.length + "件";
+    elements.driverLocalStatus.textContent = "ローカル登録数: " + state.shared.userProfiles.length + "件";
     renderButtons();
   }
 
-  function renderValueList(container, values, onDelete) {
+  function renderVehicleForm() {
+    const editingProfile = getEditingVehicleProfile();
+    elements.addVehicleButton.textContent = editingProfile ? "訂正を保存" : "追加";
+    elements.cancelVehicleEditButton.hidden = !editingProfile;
+
+    if (editingProfile) {
+      elements.vehicleInput.value = editingProfile.vehicleNumber;
+      elements.vehicleTruckTypeInput.value = editingProfile.truckType;
+      return;
+    }
+
+    if (document.activeElement !== elements.vehicleInput) {
+      elements.vehicleInput.value = "";
+    }
+    elements.vehicleTruckTypeInput.value = sharedSettings.TRUCK_TYPES.LOW12;
+  }
+
+  function renderDriverForm() {
+    populateDriverVehicleSelect();
+    const editingProfile = getEditingUserProfile();
+    elements.addDriverButton.textContent = editingProfile ? "訂正を保存" : "追加";
+    elements.cancelDriverEditButton.hidden = !editingProfile;
+
+    if (editingProfile) {
+      elements.driverLoginIdInput.value = editingProfile.loginId || "";
+      elements.driverNameInput.value = editingProfile.driverName || "";
+      elements.driverReadingInput.value = editingProfile.driverReading || "";
+      elements.driverVehicleSelect.value = editingProfile.vehicleNumber || "";
+      return;
+    }
+
+    if (document.activeElement !== elements.driverLoginIdInput) {
+      elements.driverLoginIdInput.value = "";
+    }
+    if (document.activeElement !== elements.driverNameInput) {
+      elements.driverNameInput.value = "";
+    }
+    if (document.activeElement !== elements.driverReadingInput) {
+      elements.driverReadingInput.value = "";
+    }
+    if (document.activeElement !== elements.driverVehicleSelect) {
+      elements.driverVehicleSelect.value = "";
+    }
+  }
+
+  function populateDriverVehicleSelect() {
+    const currentValue = String(elements.driverVehicleSelect.value || "");
+    elements.driverVehicleSelect.innerHTML = "";
+    elements.driverVehicleSelect.appendChild(new Option("既定車番を選択（任意）", ""));
+    state.shared.vehicleProfiles.forEach(function (profile) {
+      elements.driverVehicleSelect.appendChild(
+        new Option(
+          profile.vehicleNumber + " / " + sharedSettings.truckTypeLabel(profile.truckType),
+          profile.vehicleNumber
+        )
+      );
+    });
+
+    if (currentValue && state.shared.vehicles.includes(currentValue)) {
+      elements.driverVehicleSelect.value = currentValue;
+    }
+  }
+
+  function renderVehicleList() {
+    renderProfileList({
+      container: elements.vehicleList,
+      rows: state.shared.vehicleProfiles,
+      getLabel: function (profile) {
+        return profile.vehicleNumber;
+      },
+      getMeta: function (profile) {
+        return sharedSettings.truckTypeLabel(profile.truckType);
+      },
+      onEdit: startVehicleEdit,
+      onDelete: removeVehicle
+    });
+  }
+
+  function renderDriverList() {
+    renderProfileList({
+      container: elements.driverList,
+      rows: state.shared.userProfiles,
+      getLabel: function (profile) {
+        return profile.driverName;
+      },
+      getMeta: function (profile) {
+        const truckType = sharedSettings.getTruckTypeForVehicle(profile.vehicleNumber, state.shared);
+        const vehicleLabel = profile.vehicleNumber
+          ? profile.vehicleNumber + " / " + sharedSettings.truckTypeLabel(truckType)
+          : "既定車番なし";
+        const readingLabel = profile.driverReading || "読み未設定";
+        return "読み: " + readingLabel + " / ログインID: " + (profile.loginId || "未設定") + " / " + vehicleLabel;
+      },
+      onEdit: startDriverEdit,
+      onDelete: removeDriver
+    });
+  }
+
+  function renderProfileList(options) {
+    const container = options.container;
+    const rows = Array.isArray(options.rows) ? options.rows : [];
     container.innerHTML = "";
 
-    if (!values.length) {
+    if (!rows.length) {
       const empty = document.createElement("div");
       empty.className = "empty-list";
       empty.textContent = "まだ登録されていません";
@@ -149,24 +238,46 @@
       return;
     }
 
-    values.forEach(function (value) {
+    rows.forEach(function (row) {
       const item = document.createElement("div");
       item.className = "value-item";
 
+      const copy = document.createElement("div");
+      copy.className = "value-item-copy";
+
       const label = document.createElement("span");
       label.className = "value-item-label";
-      label.textContent = value;
+      label.textContent = options.getLabel(row);
+      copy.appendChild(label);
+
+      const meta = document.createElement("span");
+      meta.className = "value-item-meta";
+      meta.textContent = options.getMeta(row);
+      copy.appendChild(meta);
+
+      const actions = document.createElement("div");
+      actions.className = "value-item-actions";
+
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.className = "mini-button";
+      editButton.textContent = "訂正";
+      editButton.addEventListener("click", function () {
+        options.onEdit(row);
+      });
+      actions.appendChild(editButton);
 
       const deleteButton = document.createElement("button");
       deleteButton.type = "button";
       deleteButton.className = "mini-button danger value-delete-button";
       deleteButton.textContent = "削除";
       deleteButton.addEventListener("click", function () {
-        onDelete(value);
+        options.onDelete(row);
       });
+      actions.appendChild(deleteButton);
 
-      item.appendChild(label);
-      item.appendChild(deleteButton);
+      item.appendChild(copy);
+      item.appendChild(actions);
       container.appendChild(item);
     });
   }
@@ -190,106 +301,202 @@
 
   function renderButtons() {
     const disabledCloud = state.working || !state.cloudReady;
-    elements.saveVehiclesButton.disabled = disabledCloud || !state.shared.vehicles.length;
-    elements.saveDriversButton.disabled = disabledCloud || !state.shared.drivers.length;
+    elements.saveVehiclesButton.disabled = disabledCloud || !state.shared.vehicleProfiles.length;
+    elements.saveDriversButton.disabled = disabledCloud || !state.shared.userProfiles.length;
     elements.restoreVehiclesButton.disabled = disabledCloud || !state.backupMeta.vehicles;
     elements.restoreDriversButton.disabled = disabledCloud || !state.backupMeta.drivers;
-    elements.deleteVehiclesButton.disabled = state.working || !state.shared.vehicles.length;
-    elements.deleteDriversButton.disabled = state.working || !state.shared.drivers.length;
+    elements.deleteVehiclesButton.disabled = state.working || !state.shared.vehicleProfiles.length;
+    elements.deleteDriversButton.disabled = state.working || !state.shared.userProfiles.length;
   }
 
-  function addVehicle() {
-    const value = sharedSettings.normalizeText(elements.vehicleInput.value);
-    if (!value) {
+  function getEditingVehicleProfile() {
+    if (!state.editing.vehicleNumber) {
+      return null;
+    }
+    return state.shared.vehicleProfiles.find(function (profile) {
+      return profile.vehicleNumber === state.editing.vehicleNumber;
+    }) || null;
+  }
+
+  function getEditingUserProfile() {
+    if (!state.editing.userKey) {
+      return null;
+    }
+    return state.shared.userProfiles.find(function (profile) {
+      return sharedSettings.buildUserProfileKey(profile) === state.editing.userKey;
+    }) || null;
+  }
+
+  function startVehicleEdit(profile) {
+    state.editing.vehicleNumber = profile.vehicleNumber;
+    render();
+    setGlobalStatus("車両設定を訂正モードで開きました。");
+  }
+
+  function cancelVehicleEdit() {
+    state.editing.vehicleNumber = "";
+    render();
+    setGlobalStatus("車両設定の訂正をキャンセルしました。");
+  }
+
+  function startDriverEdit(profile) {
+    state.editing.userKey = sharedSettings.buildUserProfileKey(profile);
+    render();
+    setGlobalStatus("運転者設定を訂正モードで開きました。");
+  }
+
+  function cancelDriverEdit() {
+    state.editing.userKey = "";
+    render();
+    setGlobalStatus("運転者設定の訂正をキャンセルしました。");
+  }
+
+  function addOrUpdateVehicle() {
+    const vehicleNumber = sharedSettings.normalizeVehicleNumber(elements.vehicleInput.value);
+    const truckType = sharedSettings.normalizeTruckType(elements.vehicleTruckTypeInput.value);
+    const editingProfile = getEditingVehicleProfile();
+    if (!vehicleNumber) {
       setGlobalStatus("車両番号を入力してください。", true);
       return;
     }
 
-    if (state.shared.vehicles.includes(value)) {
+    const duplicate = state.shared.vehicleProfiles.find(function (profile) {
+      return profile.vehicleNumber === vehicleNumber
+        && (!editingProfile || profile.vehicleNumber !== editingProfile.vehicleNumber);
+    });
+    if (duplicate) {
       setGlobalStatus("その車両番号は既に登録されています。", true);
       return;
     }
 
-    sharedSettings.addVehicle(value);
-    elements.vehicleInput.value = "";
+    const nextProfiles = state.shared.vehicleProfiles.filter(function (profile) {
+      return !editingProfile || profile.vehicleNumber !== editingProfile.vehicleNumber;
+    });
+    nextProfiles.push({ vehicleNumber: vehicleNumber, truckType: truckType });
+    sharedSettings.saveVehicleProfiles(nextProfiles);
+    state.editing.vehicleNumber = "";
     render();
-    setGlobalStatus("車両番号を追加しました。");
+    setGlobalStatus(editingProfile ? "車両設定を訂正しました。" : "車両設定を追加しました。");
   }
 
-  function addDriver() {
-    const name = sharedSettings.normalizeText(elements.driverNameInput.value);
-    const reading = sharedSettings.normalizeText(elements.driverReadingInput.value);
-    if (!name) {
+  function addOrUpdateDriver() {
+    const loginId = sharedSettings.normalizeLoginId(elements.driverLoginIdInput.value);
+    const driverName = sharedSettings.normalizeDriverName(elements.driverNameInput.value);
+    const driverReading = sharedSettings.normalizeDriverReading(elements.driverReadingInput.value);
+    const vehicleNumber = sharedSettings.normalizeVehicleNumber(elements.driverVehicleSelect.value);
+    const editingProfile = getEditingUserProfile();
+
+    if (!loginId) {
+      setGlobalStatus("ログインIDを入力してください。", true);
+      return;
+    }
+    if (!driverName) {
       setGlobalStatus("運転者名を入力してください。", true);
       return;
     }
-    if (!reading) {
-      setGlobalStatus("読み仮名を入力してください。", true);
+    if (!driverReading) {
+      setGlobalStatus("読みを入力してください。", true);
+      return;
+    }
+    const duplicate = state.shared.userProfiles.find(function (profile) {
+      return profile.loginId === loginId
+        && (!editingProfile || sharedSettings.buildUserProfileKey(profile) !== sharedSettings.buildUserProfileKey(editingProfile));
+    });
+    if (duplicate) {
+      setGlobalStatus("そのログインIDは既に登録されています。", true);
       return;
     }
 
-    sharedSettings.addDriver(name, reading);
-    elements.driverNameInput.value = "";
-    elements.driverReadingInput.value = "";
+    const nextProfiles = state.shared.userProfiles.filter(function (profile) {
+      return !editingProfile || sharedSettings.buildUserProfileKey(profile) !== sharedSettings.buildUserProfileKey(editingProfile);
+    });
+    nextProfiles.push({
+      loginId: loginId,
+      driverName: driverName,
+      driverReading: driverReading,
+      vehicleNumber: vehicleNumber
+    });
+    sharedSettings.saveUserProfiles(nextProfiles);
+    state.editing.userKey = "";
     render();
-    setGlobalStatus("運転者名を追加しました。");
+    setGlobalStatus(editingProfile ? "運転者設定を訂正しました。" : "運転者設定を追加しました。");
   }
 
-  function removeVehicle(value) {
-    if (!window.confirm("車両番号「" + value + "」を削除しますか？")) {
+  function removeVehicle(profile) {
+    const referenceCount = state.shared.userProfiles.filter(function (userProfile) {
+      return userProfile.vehicleNumber === profile.vehicleNumber;
+    }).length;
+    if (referenceCount > 0) {
+      setGlobalStatus("この車両番号は運転者設定で使われているため削除できません。先に運転者設定を訂正してください。", true);
       return;
     }
 
-    sharedSettings.saveVehicles(state.shared.vehicles.filter(function (entry) {
-      return entry !== value;
+    if (!window.confirm("車両番号「" + profile.vehicleNumber + "」を削除しますか？")) {
+      return;
+    }
+
+    sharedSettings.saveVehicleProfiles(state.shared.vehicleProfiles.filter(function (entry) {
+      return entry.vehicleNumber !== profile.vehicleNumber;
     }));
+    if (state.editing.vehicleNumber === profile.vehicleNumber) {
+      state.editing.vehicleNumber = "";
+    }
     render();
-    setGlobalStatus("車両番号を削除しました。");
+    setGlobalStatus("車両設定を削除しました。");
   }
 
-  function removeDriver(value) {
-    if (!window.confirm("運転者名「" + value + "」を削除しますか？")) {
+  function removeDriver(profile) {
+    if (!window.confirm("運転者設定「" + profile.driverName + "」を削除しますか？")) {
       return;
     }
 
-    sharedSettings.saveDrivers(state.shared.drivers.filter(function (entry) {
-      return entry !== value;
+    sharedSettings.saveUserProfiles(state.shared.userProfiles.filter(function (entry) {
+      return sharedSettings.buildUserProfileKey(entry) !== sharedSettings.buildUserProfileKey(profile);
     }));
+    if (state.editing.userKey === sharedSettings.buildUserProfileKey(profile)) {
+      state.editing.userKey = "";
+    }
     render();
-    setGlobalStatus("運転者名を削除しました。");
+    setGlobalStatus("運転者設定を削除しました。");
   }
 
   function clearAllVehicles() {
-    if (!state.shared.vehicles.length) {
+    if (!state.shared.vehicleProfiles.length) {
       return;
     }
 
-    if (!window.confirm("登録済みの車両番号をすべて削除しますか？\nFirebase バックアップは削除されません。")) {
+    if (state.shared.userProfiles.some(function (profile) { return Boolean(profile.vehicleNumber); })) {
+      setGlobalStatus("既定車番に使われている車両設定があるため全件削除できません。先に運転者設定を訂正してください。", true);
       return;
     }
 
-    sharedSettings.saveVehicles([]);
+    if (!window.confirm("登録済みの車両設定をすべて削除しますか？\nFirebase バックアップは削除されません。")) {
+      return;
+    }
+
+    sharedSettings.saveVehicleProfiles([]);
+    state.editing.vehicleNumber = "";
     render();
-    setGlobalStatus("登録済みの車両番号をすべて削除しました。Firebase バックアップは残っています。");
+    setGlobalStatus("登録済みの車両設定をすべて削除しました。Firebase バックアップは残っています。");
   }
 
   function clearAllDrivers() {
-    if (!state.shared.drivers.length) {
+    if (!state.shared.userProfiles.length) {
       return;
     }
 
-    if (!window.confirm("登録済みの運転者名をすべて削除しますか？\nFirebase バックアップは削除されません。")) {
+    if (!window.confirm("登録済みの運転者設定をすべて削除しますか？\nFirebase バックアップは削除されません。")) {
       return;
     }
 
-    sharedSettings.saveDrivers([]);
+    sharedSettings.saveUserProfiles([]);
+    state.editing.userKey = "";
     render();
-    setGlobalStatus("登録済みの運転者名をすべて削除しました。Firebase バックアップは残っています。");
+    setGlobalStatus("登録済みの運転者設定をすべて削除しました。Firebase バックアップは残っています。");
   }
 
   async function initializeCloud() {
     state.directoryEnabled = hasDirectorySyncTarget();
-
     state.db = null;
     state.directoryDb = null;
     state.directoryError = "";
@@ -513,6 +720,18 @@
     return [];
   }
 
+  function normalizeBackupProfiles(definition, data, values) {
+    const profileRows = Array.isArray(data && data[definition.profilesFieldName])
+      ? data[definition.profilesFieldName]
+      : values;
+
+    if (definition.kind === "vehicles") {
+      return sharedSettings.normalizeVehicleProfiles(profileRows);
+    }
+
+    return sharedSettings.normalizeUserProfiles(profileRows);
+  }
+
   function readArrayFromCandidate(source, fieldName) {
     if (!source || typeof source !== "object") {
       return null;
@@ -537,14 +756,12 @@
       }
     }
 
-    const arrayValues = Object.keys(nestedSource).reduce(function (result, key) {
+    return Object.keys(nestedSource).reduce(function (result, key) {
       if (result) {
         return result;
       }
       return Array.isArray(nestedSource[key]) ? nestedSource[key] : null;
     }, null);
-
-    return arrayValues;
   }
 
   async function readBackupRecord(definition) {
@@ -578,17 +795,20 @@
           fallbackSnapshot = snapshot;
         }
 
-        const values = normalizeBackupValues(definition, snapshot.data() || {});
-        if (!values.length) {
+        const data = snapshot.data() || {};
+        const values = normalizeBackupValues(definition, data);
+        const profiles = normalizeBackupProfiles(definition, data, values);
+        if (!values.length && !profiles.length) {
           continue;
         }
 
         return {
           snapshot: snapshot,
           values: values,
-          meta: buildBackupMeta(snapshot, definition, values)
+          profiles: profiles,
+          meta: buildBackupMeta(snapshot, definition, values, profiles)
         };
-      } catch (error) {
+      } catch {
         continue;
       }
     }
@@ -597,19 +817,24 @@
       return null;
     }
 
-    const fallbackValues = normalizeBackupValues(definition, fallbackSnapshot.data() || {});
+    const fallbackData = fallbackSnapshot.data() || {};
+    const fallbackValues = normalizeBackupValues(definition, fallbackData);
+    const fallbackProfiles = normalizeBackupProfiles(definition, fallbackData, fallbackValues);
     return {
       snapshot: fallbackSnapshot,
       values: fallbackValues,
-      meta: buildBackupMeta(fallbackSnapshot, definition, fallbackValues)
+      profiles: fallbackProfiles,
+      meta: buildBackupMeta(fallbackSnapshot, definition, fallbackValues, fallbackProfiles)
     };
   }
 
-  function buildBackupMeta(snapshot, definition, normalizedValues) {
+  function buildBackupMeta(snapshot, definition, normalizedValues, profiles) {
     const data = snapshot.data() || {};
     const values = Array.isArray(normalizedValues) ? normalizedValues : normalizeBackupValues(definition, data);
+    const normalizedProfiles = Array.isArray(profiles) ? profiles : normalizeBackupProfiles(definition, data, values);
     return {
       valueCount: values.length || Number(data.valueCount || 0),
+      profileCount: normalizedProfiles.length || Number(data.profileCount || 0),
       clientUpdatedAt: data.clientUpdatedAt || "",
       serverUpdatedAt: formatFirestoreDate(data.updatedAt)
     };
@@ -617,7 +842,8 @@
 
   async function saveBackup(definition) {
     const values = definition.kind === "vehicles" ? state.shared.vehicles : state.shared.drivers;
-    if (!values.length) {
+    const profiles = definition.kind === "vehicles" ? state.shared.vehicleProfiles : state.shared.userProfiles;
+    if (!profiles.length) {
       setGlobalStatus(definition.label + "の登録データがありません。", true);
       return;
     }
@@ -628,7 +854,7 @@
     try {
       const backupRef = await resolveBackupDocRef(definition);
       const source = state.directoryEnabled ? "integrated-settings-directory" : "integrated-settings";
-      await backupRef.set(buildBackupPayload(definition, values, source));
+      await backupRef.set(buildBackupPayload(definition, values, profiles, source));
       state.directoryError = "";
 
       await refreshBackups();
@@ -647,15 +873,17 @@
     }
   }
 
-  function buildBackupPayload(definition, values, source) {
+  function buildBackupPayload(definition, values, profiles, source) {
     return {
       kind: definition.kind,
       slot: 1,
       values: values,
       valueCount: values.length,
+      profileCount: profiles.length,
       clientUpdatedAt: new Date().toISOString(),
       updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
-      source: source
+      source: source,
+      [definition.profilesFieldName]: profiles
     };
   }
 
@@ -663,15 +891,12 @@
     if (!error) {
       return "";
     }
-
     if (error.code) {
       return String(error.code);
     }
-
     if (error.message) {
       return String(error.message);
     }
-
     return "";
   }
 
@@ -681,17 +906,25 @@
 
     try {
       const backup = await readBackupRecord(definition);
-      if (!backup || !backup.snapshot || !backup.snapshot.exists || !backup.values.length) {
+      if (!backup || !backup.snapshot || !backup.snapshot.exists || (!backup.values.length && !backup.profiles.length)) {
         setGlobalStatus(definition.label + "のバックアップはありません。", true);
         return;
       }
 
       if (definition.kind === "vehicles") {
-        sharedSettings.saveVehicles(backup.values);
+        if (backup.profiles.length) {
+          sharedSettings.saveVehicleProfiles(backup.profiles);
+        } else {
+          sharedSettings.saveVehicles(backup.values);
+        }
+      } else if (backup.profiles.length) {
+        sharedSettings.saveUserProfiles(backup.profiles);
       } else {
         sharedSettings.saveDrivers(backup.values);
       }
 
+      state.editing.vehicleNumber = "";
+      state.editing.userKey = "";
       await refreshBackups();
       setGlobalStatus(definition.label + "をバックアップから復元しました。");
     } catch (error) {
@@ -732,4 +965,3 @@
     return year + "-" + month + "-" + day + " " + hours + ":" + minutes;
   }
 })();
-

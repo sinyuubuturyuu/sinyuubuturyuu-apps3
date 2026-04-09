@@ -364,6 +364,41 @@ function getStringArray(source, fieldName = "values") {
   return source[fieldName].map((value) => normalizeOptionValue(value)).filter(Boolean);
 }
 
+function getDriverEntriesFromProfiles(profiles) {
+  if (!Array.isArray(profiles)) {
+    return [];
+  }
+
+  if (
+    sharedSettings
+    && typeof sharedSettings.normalizeUserProfiles === "function"
+    && typeof sharedSettings.formatDriverProfileEntry === "function"
+  ) {
+    return sharedSettings
+      .normalizeUserProfiles(profiles)
+      .map((profile) => sharedSettings.formatDriverProfileEntry(profile))
+      .map((value) => normalizeOptionValue(value))
+      .filter(Boolean);
+  }
+
+  return profiles
+    .map((profile) => normalizeOptionValue(profile?.driverName || profile?.name || profile?.driver || profile?.value))
+    .filter(Boolean);
+}
+
+function getDriverSourceEntries(source) {
+  if (!source || typeof source !== "object") {
+    return [];
+  }
+
+  const profileEntries = getDriverEntriesFromProfiles(source.userProfiles);
+  if (profileEntries.length) {
+    return profileEntries;
+  }
+
+  return getStringArray(source);
+}
+
 function getLocalSharedOptions() {
   if (!sharedSettings || typeof sharedSettings.ensureState !== "function") {
     return {
@@ -377,9 +412,11 @@ function getLocalSharedOptions() {
     vehicles: Array.isArray(sharedState.vehicles)
       ? sharedState.vehicles.map((value) => normalizeVehicleValue(value)).filter(Boolean)
       : [],
-    rawDrivers: Array.isArray(sharedState.drivers)
-      ? sharedState.drivers.map((value) => normalizeOptionValue(value)).filter(Boolean)
-      : []
+    rawDrivers: Array.isArray(sharedState.userProfiles) && sharedState.userProfiles.length
+      ? getDriverEntriesFromProfiles(sharedState.userProfiles)
+      : (Array.isArray(sharedState.drivers)
+        ? sharedState.drivers.map((value) => normalizeOptionValue(value)).filter(Boolean)
+        : [])
   };
 }
 
@@ -476,34 +513,20 @@ async function ensureAppAuth() {
   return ensureSignedInUser(auth);
 }
 
-function setSelectOptions(selectEl, options, placeholder, selectedValue = "") {
-  const normalizeSelectValue = (value) => (
-    selectEl === driverEl ? normalizeDriverLookupKey(value) : normalizeVehicleValue(value)
-  );
-  const normalizedSelectedValue = normalizeSelectValue(selectedValue);
+function setSelectOptions(selectEl, options, placeholder, selectedValue = "", normalizeValue = normalizeOptionValue) {
+  const normalizedSelectedValue = normalizeValue(selectedValue);
   const optionMap = new Map();
 
   (options || []).forEach((option) => {
-    const optionKey = normalizeSelectValue(option);
+    const optionKey = normalizeValue(option);
     if (!optionKey) {
       return;
     }
-    if (selectEl === driverEl) {
-      const displayValue = extractDriverDisplayName(option);
-      const existingValue = optionMap.get(optionKey);
-      if (!existingValue || (!/\s/.test(existingValue) && /\s/.test(displayValue))) {
-        optionMap.set(optionKey, displayValue);
-      }
-      return;
-    }
-    optionMap.set(optionKey, normalizeVehicleValue(option));
+    optionMap.set(optionKey, optionKey);
   });
 
   if (normalizedSelectedValue && !optionMap.has(normalizedSelectedValue)) {
-    const displayValue = selectEl === driverEl
-      ? extractDriverDisplayName(selectedValue)
-      : normalizeVehicleValue(selectedValue);
-    optionMap.set(normalizedSelectedValue, displayValue);
+    optionMap.set(normalizedSelectedValue, normalizedSelectedValue);
   }
 
   selectEl.innerHTML = "";
@@ -524,31 +547,22 @@ function setSelectOptions(selectEl, options, placeholder, selectedValue = "") {
   selectEl.value = selectedOptionValue;
 }
 
-function ensureSelectValue(selectEl, value) {
-  const normalizedValue = selectEl === driverEl
-    ? normalizeDriverLookupKey(value)
-    : normalizeVehicleValue(value);
+function ensureSelectValue(selectEl, value, normalizeValue = normalizeOptionValue) {
+  const normalizedValue = normalizeValue(value);
   if (!normalizedValue) {
     selectEl.value = "";
     return;
   }
 
-  const hasOption = Array.from(selectEl.options).some((option) => (
-    selectEl === driverEl
-      ? normalizeDriverLookupKey(option.value) === normalizedValue
-      : option.value === normalizedValue
-  ));
+  const hasOption = Array.from(selectEl.options).some((option) => normalizeValue(option.value) === normalizedValue);
   if (!hasOption) {
     const optionEl = document.createElement("option");
-    const optionValue = selectEl === driverEl
-      ? extractDriverDisplayName(value)
-      : normalizedValue;
-    optionEl.value = optionValue;
-    optionEl.textContent = optionValue;
+    optionEl.value = normalizedValue;
+    optionEl.textContent = normalizedValue;
     selectEl.append(optionEl);
   }
 
-  selectEl.value = selectEl === driverEl ? extractDriverDisplayName(value) : normalizedValue;
+  selectEl.value = normalizedValue;
 }
 
 function escapeCsvValue(value) {
@@ -625,7 +639,7 @@ function parseCsv(text) {
 
 async function loadReferenceOptions() {
   const selectedVehicle = normalizeVehicleValue(vehicleEl.value);
-  const selectedDriver = normalizeOptionValue(driverEl.value);
+  const selectedDriver = normalizeDriverDisplayName(driverEl.value);
   const localOptions = getLocalSharedOptions();
   const localDrivers = localOptions.rawDrivers.map((value) => {
     rememberDriverStorageValue(value);
@@ -651,7 +665,7 @@ async function loadReferenceOptions() {
     );
     const rawDrivers = mergeUniqueOptions(
       localOptions.rawDrivers,
-      driverDocExists ? getStringArray(driverSnapshot.data()) : []
+      driverDocExists ? getDriverSourceEntries(driverSnapshot.data()) : []
     );
     rawDrivers.forEach((value) => rememberDriverStorageValue(value));
     const drivers = mergeUniqueDriverOptions(
@@ -662,8 +676,8 @@ async function loadReferenceOptions() {
     state.vehicleOptions = sortOptions(vehicles);
     state.driverOptions = sortDriverOptions(drivers);
 
-    setSelectOptions(vehicleEl, state.vehicleOptions, "車番を選択", selectedVehicle);
-    setSelectOptions(driverEl, state.driverOptions, "運転者を選択", selectedDriver);
+    setSelectOptions(vehicleEl, state.vehicleOptions, "車番を選択", selectedVehicle, normalizeVehicleValue);
+    setSelectOptions(driverEl, state.driverOptions, "運転者を選択", selectedDriver, normalizeDriverDisplayName);
 
     vehicleEl.disabled = false;
     driverEl.disabled = false;
@@ -694,8 +708,8 @@ async function loadReferenceOptions() {
   } catch (error) {
     state.vehicleOptions = sortOptions(localOptions.vehicles);
     state.driverOptions = sortDriverOptions(localDrivers);
-    setSelectOptions(vehicleEl, state.vehicleOptions, "車番を選択", selectedVehicle);
-    setSelectOptions(driverEl, state.driverOptions, "運転者を選択", selectedDriver);
+    setSelectOptions(vehicleEl, state.vehicleOptions, "車番を選択", selectedVehicle, normalizeVehicleValue);
+    setSelectOptions(driverEl, state.driverOptions, "運転者を選択", selectedDriver, normalizeDriverDisplayName);
     vehicleEl.disabled = false;
     driverEl.disabled = false;
     syncHeaderInfo();
@@ -2197,8 +2211,8 @@ function applyImportedRecord(imported) {
   }
 
   rememberDriverStorageValue(imported.driver);
-  ensureSelectValue(vehicleEl, imported.vehicle);
-  ensureSelectValue(driverEl, imported.driver);
+  ensureSelectValue(vehicleEl, imported.vehicle, normalizeVehicleValue);
+  ensureSelectValue(driverEl, imported.driver, normalizeDriverDisplayName);
 
   const daysInMonth = getDaysInSelectedMonth();
   const filteredChecks = {};

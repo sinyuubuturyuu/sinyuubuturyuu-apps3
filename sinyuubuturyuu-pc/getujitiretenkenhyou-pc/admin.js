@@ -407,7 +407,7 @@
     if (depth > 8 || value == null) return;
 
     if (Array.isArray(value)) {
-      value.forEach((item) => collectVehicleOptionsFromValue(item, targetSet, depth + 1, true));
+      value.forEach((item) => collectVehicleOptionsFromValue(item, targetSet, depth + 1, allowStringValue));
       return;
     }
 
@@ -431,7 +431,7 @@
     if (depth > 8 || value == null) return;
 
     if (Array.isArray(value)) {
-      value.forEach((item) => collectDriverEntriesFromValue(item, entryMap, depth + 1, true));
+      value.forEach((item) => collectDriverEntriesFromValue(item, entryMap, depth + 1, allowStringValue));
       return;
     }
 
@@ -573,11 +573,21 @@
 
     const sharedState = sharedSettings.ensureState();
     const driverReadingMap = new Map();
+    const userProfiles = Array.isArray(sharedState.userProfiles) ? sharedState.userProfiles : [];
+    const sharedDrivers = userProfiles.length
+      ? userProfiles.map((profile) => ({
+        name: normalizeText(profile && profile.driverName),
+        reading: toHiraganaText(profile && profile.driverReading)
+      }))
+      : (sharedState.drivers || []).map((entry) => {
+        const parsed = parseDriverNameWithReading(entry);
+        return {
+          name: normalizeText(parsed.name),
+          reading: toHiraganaText(parsed.reading)
+        };
+      });
 
-    (sharedState.drivers || []).forEach((entry) => {
-      const parsed = parseDriverNameWithReading(entry);
-      const driverName = normalizeText(parsed.name);
-      const driverReading = toHiraganaText(parsed.reading);
+    sharedDrivers.forEach(({ name: driverName, reading: driverReading }) => {
       if (!driverName || !driverReading) {
         return;
       }
@@ -589,7 +599,7 @@
     return {
       vehicleNumber: sortOptions(new Set(sharedState.vehicles || [])),
       driverName: sortDriverOptions(
-        dedupeDriverOptions((sharedState.drivers || []).map((entry) => parseDriverNameWithReading(entry).name).filter(Boolean)),
+        dedupeDriverOptions(sharedDrivers.map((entry) => entry.name).filter(Boolean)),
         driverReadingMap
       ),
       driverReadingMap

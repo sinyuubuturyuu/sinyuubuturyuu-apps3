@@ -249,6 +249,17 @@ body {
   color: var(--text);
 }
 
+.field select {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  font: inherit;
+  background: #fff;
+  color: var(--text);
+}
+
 .field-row,
 .button-row,
 .field-column {
@@ -260,6 +271,10 @@ body {
 .field-row input {
   flex: 1 1 280px;
   min-width: 0;
+}
+
+.field-row select {
+  flex: 0 0 180px;
 }
 
 .field-column {
@@ -328,6 +343,25 @@ body {
   word-break: break-word;
 }
 
+.value-item-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 4px;
+}
+
+.value-item-meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.value-item-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .value-delete-button {
   min-width: 72px;
   flex: 0 0 auto;
@@ -373,6 +407,10 @@ body {
   .value-item {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .value-item-actions {
+    width: 100%;
   }
 
   .value-delete-button {

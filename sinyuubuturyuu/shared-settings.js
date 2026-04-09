@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   "use strict";
 
   const STORAGE = Object.freeze({
@@ -6,7 +6,9 @@
     vehicles: "tire.monthly.vehicles.v1",
     drivers: "tire.monthly.drivers.v1",
     truckTypes: "tire.monthly.trucktypes.v1",
-    theme: "tire.monthly.theme.v1"
+    theme: "tire.monthly.theme.v1",
+    vehicleProfiles: "tire.monthly.vehicle-profiles.v1",
+    userProfiles: "tire.monthly.user-profiles.v1"
   });
 
   const TRUCK_TYPES = Object.freeze({
@@ -47,16 +49,28 @@
     return String(value ?? "").trim();
   }
 
+  function normalizeLoginId(value) {
+    return normalizeText(value).toLowerCase();
+  }
+
   function normalizeVehicleNumber(value) {
     return normalizeText(value)
       .normalize("NFKC")
       .replace(/\s+/g, "");
   }
 
-  function normalizeTruckType(type) {
+  function normalizeTruckType(type, fallback = TRUCK_TYPES.LOW12) {
     if (type === TRUCK_TYPES.TEN10) return TRUCK_TYPES.TEN10;
     if (type === TRUCK_TYPES.FOURTON6) return TRUCK_TYPES.FOURTON6;
-    return TRUCK_TYPES.LOW12;
+    if (type === TRUCK_TYPES.LOW12) return TRUCK_TYPES.LOW12;
+    return fallback;
+  }
+
+  function normalizeCurrentTruckType(type) {
+    if (type === TRUCK_TYPES.TEN10) return TRUCK_TYPES.TEN10;
+    if (type === TRUCK_TYPES.FOURTON6) return TRUCK_TYPES.FOURTON6;
+    if (type === TRUCK_TYPES.LOW12) return TRUCK_TYPES.LOW12;
+    return "";
   }
 
   function sortTruckTypes(rows) {
@@ -170,11 +184,152 @@
     return sorted.length ? sorted : sortTruckTypes(TRUCK_TYPE_CATALOG.map((item) => item.value));
   }
 
+  function normalizeVehicleProfile(entry) {
+    if (typeof entry === "string") {
+      const vehicleNumber = normalizeVehicleNumber(entry);
+      if (!vehicleNumber) {
+        return null;
+      }
+      return {
+        vehicleNumber,
+        truckType: TRUCK_TYPES.LOW12
+      };
+    }
+
+    if (!entry || typeof entry !== "object") {
+      return null;
+    }
+
+    const vehicleNumber = normalizeVehicleNumber(entry.vehicleNumber || entry.vehicle || entry.value || entry.carNumber);
+    if (!vehicleNumber) {
+      return null;
+    }
+
+    return {
+      vehicleNumber,
+      truckType: normalizeTruckType(entry.truckType)
+    };
+  }
+
+  function normalizeVehicleProfiles(rows) {
+    if (!Array.isArray(rows)) {
+      return [];
+    }
+
+    const unique = new Map();
+    rows.forEach((entry) => {
+      const profile = normalizeVehicleProfile(entry);
+      if (!profile) {
+        return;
+      }
+      unique.set(profile.vehicleNumber, profile);
+    });
+
+    return Array.from(unique.values()).sort((left, right) => {
+      return JA_COLLATOR.compare(left.vehicleNumber, right.vehicleNumber);
+    });
+  }
+
+  function buildUserProfileKey(profile) {
+    const loginId = normalizeLoginId(profile && profile.loginId);
+    if (loginId) {
+      return `login:${loginId}`;
+    }
+    return `name:${normalizeDriverNameKey(profile && profile.driverName)}`;
+  }
+
+  function normalizeUserProfile(entry) {
+    if (typeof entry === "string") {
+      const driverName = normalizeDriverName(entry);
+      if (!driverName) {
+        return null;
+      }
+      return {
+        loginId: "",
+        driverName,
+        vehicleNumber: ""
+      };
+    }
+
+    if (!entry || typeof entry !== "object") {
+      return null;
+    }
+
+    const loginId = normalizeLoginId(entry.loginId || entry.email || entry.userId);
+    const driverName = normalizeDriverName(entry.driverName || entry.driver || entry.name || entry.value);
+    const vehicleNumber = normalizeVehicleNumber(entry.vehicleNumber || entry.vehicle || entry.defaultVehicleNumber);
+    if (!loginId && !driverName && !vehicleNumber) {
+      return null;
+    }
+
+    return {
+      loginId,
+      driverName,
+      vehicleNumber
+    };
+  }
+
+  function normalizeUserProfiles(rows) {
+    if (!Array.isArray(rows)) {
+      return [];
+    }
+
+    const unique = new Map();
+    rows.forEach((entry) => {
+      const profile = normalizeUserProfile(entry);
+      if (!profile || !profile.driverName) {
+        return;
+      }
+      unique.set(buildUserProfileKey(profile), profile);
+    });
+
+    return Array.from(unique.values()).sort((left, right) => {
+      const driverCompare = JA_COLLATOR.compare(left.driverName, right.driverName);
+      if (driverCompare !== 0) {
+        return driverCompare;
+      }
+      return JA_COLLATOR.compare(left.loginId, right.loginId);
+    });
+  }
+
+  function deriveVehiclesFromProfiles(vehicleProfiles) {
+    return normalizeVehicles(vehicleProfiles.map((profile) => profile.vehicleNumber));
+  }
+
+  function deriveDriversFromProfiles(userProfiles) {
+    return normalizeDrivers(userProfiles.map((profile) => profile.driverName));
+  }
+
   function arraysEqual(left, right) {
     return Array.isArray(left)
       && Array.isArray(right)
       && left.length === right.length
       && left.every((value, index) => value === right[index]);
+  }
+
+  function vehicleProfilesEqual(left, right) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((profile, index) => {
+        const next = right[index];
+        return next
+          && profile.vehicleNumber === next.vehicleNumber
+          && profile.truckType === next.truckType;
+      });
+  }
+
+  function userProfilesEqual(left, right) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((profile, index) => {
+        const next = right[index];
+        return next
+          && profile.loginId === next.loginId
+          && profile.driverName === next.driverName
+          && profile.vehicleNumber === next.vehicleNumber;
+      });
   }
 
   function getTheme() {
@@ -187,15 +342,24 @@
 
   function readState() {
     const rawCurrent = safeReadJson(STORAGE.current, {});
+    const legacyVehicles = safeReadJson(STORAGE.vehicles, []);
+    const legacyDrivers = safeReadJson(STORAGE.drivers, []);
+    const rawVehicleProfiles = safeReadJson(STORAGE.vehicleProfiles, null);
+    const rawUserProfiles = safeReadJson(STORAGE.userProfiles, null);
+    const vehicleProfiles = normalizeVehicleProfiles(rawVehicleProfiles == null ? legacyVehicles : rawVehicleProfiles);
+    const userProfiles = normalizeUserProfiles(rawUserProfiles == null ? legacyDrivers : rawUserProfiles);
     return {
       currentRaw: rawCurrent && typeof rawCurrent === "object" ? rawCurrent : {},
       current: {
+        loginId: normalizeLoginId(rawCurrent && rawCurrent.loginId),
         driverName: normalizeDriverName(rawCurrent && rawCurrent.driverName),
         vehicleNumber: normalizeVehicleNumber(rawCurrent && rawCurrent.vehicleNumber),
-        truckType: normalizeTruckType(rawCurrent && rawCurrent.truckType)
+        truckType: normalizeCurrentTruckType(rawCurrent && rawCurrent.truckType)
       },
-      vehicles: normalizeVehicles(safeReadJson(STORAGE.vehicles, [])),
-      drivers: normalizeDrivers(safeReadJson(STORAGE.drivers, [])),
+      vehicleProfiles,
+      userProfiles,
+      vehicles: deriveVehiclesFromProfiles(vehicleProfiles),
+      drivers: deriveDriversFromProfiles(userProfiles),
       truckTypes: normalizeTruckTypes(safeReadJson(STORAGE.truckTypes, TRUCK_TYPE_CATALOG.map((item) => item.value))),
       theme: getTheme()
     };
@@ -210,60 +374,64 @@
     safeWriteJson(STORAGE.current, nextRaw);
   }
 
+  function getVehicleProfile(vehicleNumber, state) {
+    const safeState = state || readState();
+    const normalizedVehicleNumber = normalizeVehicleNumber(vehicleNumber);
+    return safeState.vehicleProfiles.find((profile) => profile.vehicleNumber === normalizedVehicleNumber) || null;
+  }
+
+  function getTruckTypeForVehicle(vehicleNumber, state) {
+    const profile = getVehicleProfile(vehicleNumber, state);
+    return profile ? profile.truckType : "";
+  }
+
+  function getUserProfileByLoginId(loginId, state) {
+    const safeState = state || readState();
+    const normalizedLoginId = normalizeLoginId(loginId);
+    if (!normalizedLoginId) {
+      return null;
+    }
+    return safeState.userProfiles.find((profile) => profile.loginId === normalizedLoginId) || null;
+  }
+
   function ensureState() {
     let state = readState();
-    let vehicles = state.vehicles.slice();
-    let drivers = state.drivers.slice();
-    let truckTypes = state.truckTypes.slice();
-    const current = { ...state.current };
+    let current = { ...state.current };
     let changed = false;
-    const hasVehicleSelectionExplicit = Object.prototype.hasOwnProperty.call(state.currentRaw, "vehicleSelectionExplicit");
-    const hasDriverSelectionExplicit = Object.prototype.hasOwnProperty.call(state.currentRaw, "driverSelectionExplicit");
 
-    if (!hasVehicleSelectionExplicit && current.vehicleNumber) {
-      current.vehicleNumber = "";
-      changed = true;
-    }
-
-    if (!hasDriverSelectionExplicit && current.driverName) {
+    if (current.driverName && !state.drivers.some((entry) => normalizeDriverNameKey(entry) === normalizeDriverNameKey(current.driverName))) {
       current.driverName = "";
       changed = true;
     }
 
-    if (current.vehicleNumber && !vehicles.includes(current.vehicleNumber)) {
-      vehicles = [current.vehicleNumber].concat(vehicles.filter((value) => value !== current.vehicleNumber));
-      safeWriteJson(STORAGE.vehicles, vehicles);
+    if (current.vehicleNumber && !state.vehicles.includes(current.vehicleNumber)) {
+      current.vehicleNumber = "";
+      current.truckType = "";
       changed = true;
     }
 
-    if (current.driverName && !drivers.some((entry) => normalizeDriverNameKey(entry) === normalizeDriverNameKey(current.driverName))) {
-      drivers = normalizeDrivers(drivers.concat(current.driverName));
-      safeWriteJson(STORAGE.drivers, drivers);
-      changed = true;
-    }
-
-    if (current.driverName) {
-      const matchedDriver = drivers.find((entry) => normalizeDriverNameKey(entry) === normalizeDriverNameKey(current.driverName));
-      const matchedName = matchedDriver ? normalizeDriverName(matchedDriver) : "";
-      if (matchedName && matchedName !== current.driverName) {
-        current.driverName = matchedName;
+    if (current.vehicleNumber) {
+      const linkedTruckType = getTruckTypeForVehicle(current.vehicleNumber, state);
+      if (current.truckType !== linkedTruckType) {
+        current.truckType = linkedTruckType;
         changed = true;
       }
-    }
-
-    if (!truckTypes.includes(current.truckType)) {
-      current.truckType = truckTypes[0] || TRUCK_TYPES.LOW12;
+    } else if (current.truckType) {
+      current.truckType = "";
       changed = true;
     }
 
-
-    if (!arraysEqual(state.truckTypes, truckTypes)) {
-      safeWriteJson(STORAGE.truckTypes, truckTypes);
+    if (!arraysEqual(state.truckTypes, normalizeTruckTypes(state.truckTypes))) {
+      state = {
+        ...state,
+        truckTypes: normalizeTruckTypes(state.truckTypes)
+      };
       changed = true;
     }
 
     if (
-      state.current.driverName !== current.driverName
+      state.current.loginId !== current.loginId
+      || state.current.driverName !== current.driverName
       || state.current.vehicleNumber !== current.vehicleNumber
       || state.current.truckType !== current.truckType
     ) {
@@ -271,17 +439,60 @@
       changed = true;
     }
 
+    safeWriteJson(STORAGE.vehicleProfiles, state.vehicleProfiles);
+    safeWriteJson(STORAGE.userProfiles, state.userProfiles);
+    safeWriteJson(STORAGE.vehicles, state.vehicles);
+    safeWriteJson(STORAGE.drivers, state.drivers);
+    safeWriteJson(STORAGE.truckTypes, state.truckTypes);
+
     return changed ? readState() : state;
   }
 
-  function saveVehicles(rows) {
-    safeWriteJson(STORAGE.vehicles, normalizeVehicles(rows));
+  function saveVehicleProfiles(rows) {
+    safeWriteJson(STORAGE.vehicleProfiles, normalizeVehicleProfiles(rows));
     return ensureState();
   }
 
-  function saveDrivers(rows) {
-    safeWriteJson(STORAGE.drivers, normalizeDrivers(rows));
+  function saveUserProfiles(rows) {
+    safeWriteJson(STORAGE.userProfiles, normalizeUserProfiles(rows));
     return ensureState();
+  }
+
+  function saveReferenceProfiles(profiles) {
+    if (profiles && Object.prototype.hasOwnProperty.call(profiles, "vehicleProfiles")) {
+      safeWriteJson(STORAGE.vehicleProfiles, normalizeVehicleProfiles(profiles.vehicleProfiles));
+    }
+    if (profiles && Object.prototype.hasOwnProperty.call(profiles, "userProfiles")) {
+      safeWriteJson(STORAGE.userProfiles, normalizeUserProfiles(profiles.userProfiles));
+    }
+    return ensureState();
+  }
+
+  function saveVehicles(rows) {
+    const state = ensureState();
+    const existingProfiles = new Map(state.vehicleProfiles.map((profile) => [profile.vehicleNumber, profile]));
+    return saveVehicleProfiles(
+      normalizeVehicles(rows).map((vehicleNumber) => {
+        return existingProfiles.get(vehicleNumber) || {
+          vehicleNumber,
+          truckType: TRUCK_TYPES.LOW12
+        };
+      })
+    );
+  }
+
+  function saveDrivers(rows) {
+    const state = ensureState();
+    const existingProfiles = new Map(state.userProfiles.map((profile) => [normalizeDriverNameKey(profile.driverName), profile]));
+    return saveUserProfiles(
+      normalizeDrivers(rows).map((driverName) => {
+        return existingProfiles.get(normalizeDriverNameKey(driverName)) || {
+          loginId: "",
+          driverName: normalizeDriverName(driverName),
+          vehicleNumber: ""
+        };
+      })
+    );
   }
 
   function saveTruckTypes(rows) {
@@ -298,24 +509,43 @@
   function updateCurrent(patch) {
     const state = readState();
     const nextPatch = {};
+    if (Object.prototype.hasOwnProperty.call(patch, "loginId")) {
+      nextPatch.loginId = normalizeLoginId(patch.loginId);
+    }
     if (Object.prototype.hasOwnProperty.call(patch, "driverName")) {
       nextPatch.driverName = normalizeDriverName(patch.driverName);
-      nextPatch.driverSelectionExplicit = Boolean(nextPatch.driverName);
     }
     if (Object.prototype.hasOwnProperty.call(patch, "vehicleNumber")) {
-      nextPatch.vehicleNumber = normalizeVehicleNumber(patch.vehicleNumber);
-      nextPatch.vehicleSelectionExplicit = Boolean(nextPatch.vehicleNumber);
+      const nextVehicleNumber = normalizeVehicleNumber(patch.vehicleNumber);
+      nextPatch.vehicleNumber = nextVehicleNumber;
+      if (!Object.prototype.hasOwnProperty.call(patch, "truckType")) {
+        nextPatch.truckType = nextVehicleNumber ? getTruckTypeForVehicle(nextVehicleNumber, state) : "";
+      }
     }
     if (Object.prototype.hasOwnProperty.call(patch, "truckType")) {
-      nextPatch.truckType = normalizeTruckType(patch.truckType);
+      nextPatch.truckType = normalizeCurrentTruckType(patch.truckType);
     }
     writeCurrent(state, nextPatch);
     return ensureState();
   }
 
+  function applyLoginAssignment(loginId) {
+    const state = ensureState();
+    const normalizedLoginId = normalizeLoginId(loginId);
+    const userProfile = getUserProfileByLoginId(normalizedLoginId, state);
+    const vehicleNumber = userProfile ? userProfile.vehicleNumber : "";
+    writeCurrent(state, {
+      loginId: normalizedLoginId,
+      driverName: userProfile ? userProfile.driverName : "",
+      vehicleNumber: vehicleNumber,
+      truckType: vehicleNumber ? getTruckTypeForVehicle(vehicleNumber, state) : ""
+    });
+    return ensureState();
+  }
+
   function truckTypeLabel(type) {
     const found = TRUCK_TYPE_CATALOG.find((item) => item.value === type);
-    return found ? found.label : TRUCK_TYPE_CATALOG[0].label;
+    return found ? found.label : "未選択";
   }
 
   window.SharedLauncherSettings = Object.freeze({
@@ -326,9 +556,18 @@
     ensureState,
     saveVehicles,
     saveDrivers,
+    saveVehicleProfiles,
+    saveUserProfiles,
+    saveReferenceProfiles,
     saveTruckTypes,
     saveTheme,
     updateCurrent,
+    applyLoginAssignment,
+    getVehicleProfile,
+    getTruckTypeForVehicle,
+    getUserProfileByLoginId,
+    buildUserProfileKey,
+    normalizeLoginId,
     normalizeDriverName,
     normalizeDriverEntry,
     normalizeDriverReading,
@@ -336,8 +575,9 @@
     normalizeTruckType,
     normalizeVehicles,
     normalizeDrivers,
-    normalizeTruckTypes,
+    normalizeVehicleProfiles,
+    normalizeUserProfiles,
+    normalizeCurrentTruckType,
     truckTypeLabel
   });
 })();
-
