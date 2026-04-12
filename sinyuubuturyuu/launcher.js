@@ -987,7 +987,8 @@ async function openMonthlyApp() {
   elements.app1Button.disabled = true;
 
   try {
-    await requireSignedInUser();
+    const user = await requireSignedInUser();
+    await stabilizeLauncherSelection(user, { refresh: true });
     if (await shouldShowMonthlyCompleteImage()) {
       await showSendFarewell({
         src: MONTHLY_COMPLETE_IMAGE_SRC,

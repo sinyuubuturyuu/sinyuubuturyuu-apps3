@@ -855,7 +855,9 @@
           return;
         }
 
-        const nextState = sharedSettings.applyLoginAssignment(loginId);
+        const nextState = sharedSettings.applyLoginAssignment(loginId, {
+          preserveVehicleSelection: true
+        });
         syncSharedSnapshot(nextState);
         saveCurrent();
 

@@ -1696,12 +1696,16 @@ async function clearLegacyCaches() {
     return;
   }
 
+  const appScopeUrl = new URL("./", window.location.href).href;
   const registrations = await navigator.serviceWorker.getRegistrations();
+  const legacyAppRegistrations = registrations.filter((registration) => {
+    return typeof registration?.scope === "string" && registration.scope.startsWith(appScopeUrl);
+  });
   const cacheKeys = await caches.keys();
   const legacyCacheKeys = cacheKeys.filter((key) => key.startsWith("monthly-inspection-shell-"));
-  const hasLegacyState = registrations.length > 0 || legacyCacheKeys.length > 0;
+  const hasLegacyState = legacyAppRegistrations.length > 0 || legacyCacheKeys.length > 0;
 
-  await Promise.all(registrations.map((registration) => registration.unregister()));
+  await Promise.all(legacyAppRegistrations.map((registration) => registration.unregister()));
   await Promise.all(legacyCacheKeys.map((key) => caches.delete(key)));
 
   if (hasLegacyState && !sessionStorage.getItem("monthlyInspectionCacheReset")) {
