@@ -7,12 +7,13 @@
 
 const MONTHLY_COMPLETE_IMAGE_SRC = "./getujitiretenkenhyou/icons/monthly-complete.png";
 const REFERENCE_FIREBASE_CONFIG = Object.freeze(window.APP_FIREBASE_DIRECTORY_CONFIG || {
-  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
-  authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
-  projectId: "sinyuubuturyuu-dev",
-  storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
-  messagingSenderId: "997788842966",
-  appId: "1:997788842966:web:e011e7340e2af863c40277",
+  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
+  authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
+  projectId: "sinyuubuturyuu-86aeb",
+  storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
+  messagingSenderId: "213947378677",
+  appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
+  measurementId: "G-F9VYGCTHEV",
 });
 const REFERENCE_SOURCE_KIND = Object.freeze({
   VEHICLES: "vehicles",
@@ -38,12 +39,13 @@ const MONTHLY_COMPLETE_IMAGE_ALT = "Monthly inspection complete.";
 const DAILY_INSPECTION_COMPLETE_IMAGE_SRC = "./getujinitijyoutenkenhyou/icons/monthly-complete.png";
 const DAILY_INSPECTION_COMPLETE_IMAGE_ALT = "Daily inspection complete for this month.";
 const DAILY_INSPECTION_FIREBASE_CONFIG = Object.freeze({
-  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
-  authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
-  projectId: "sinyuubuturyuu-dev",
-  storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
-  messagingSenderId: "997788842966",
-  appId: "1:997788842966:web:e011e7340e2af863c40277",
+  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
+  authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
+  projectId: "sinyuubuturyuu-86aeb",
+  storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
+  messagingSenderId: "213947378677",
+  appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
+  measurementId: "G-F9VYGCTHEV",
 });
 const DAILY_INSPECTION_APP_SETTINGS = Object.freeze({
   collectionName: "getujinitijyoutenkenhyou",
