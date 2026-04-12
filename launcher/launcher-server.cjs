@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
-const rootDir = __dirname;
+const rootDir = path.resolve(__dirname, "..");
 const requestedPort = Number(process.argv[2] || process.env.PORT || 8080);
 const host = "0.0.0.0";
 const maxPortAttempts = 20;
@@ -143,3 +143,4 @@ function startServer(port, attemptsRemaining) {
 }
 
 startServer(requestedPort, maxPortAttempts);
+

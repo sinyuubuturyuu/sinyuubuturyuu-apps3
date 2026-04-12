@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="若本の印影">
+  <rect width="512" height="512" fill="#ffffff"/>
+  <circle
+    cx="256"
+    cy="256"
+    r="230"
+    fill="none"
+    stroke="#ff2026"
+    stroke-width="26"
+  />
+  <g
+    fill="#ff2026"
+    stroke="#ff2026"
+    stroke-linejoin="round"
+    paint-order="stroke fill"
+    aria-hidden="true"
+  >
+    <text
+      x="178"
+      y="281"
+      text-anchor="middle"
+      dominant-baseline="middle"
+      font-size="176"
+      font-weight="700"
+      font-family="'Yu Mincho', 'Hiragino Mincho ProN', 'MS Mincho', serif"
+      stroke-width="6"
+    >若</text>
+    <text
+      x="336"
+      y="281"
+      text-anchor="middle"
+      dominant-baseline="middle"
+      font-size="176"
+      font-weight="700"
+      font-family="'Yu Mincho', 'Hiragino Mincho ProN', 'MS Mincho', serif"
+      stroke-width="6"
+    >本</text>
+  </g>
+</svg>

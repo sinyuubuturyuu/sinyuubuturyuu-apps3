@@ -4,6 +4,7 @@
   const STORAGE = Object.freeze({
     vehicles: "tire.monthly.vehicles.v1",
     drivers: "tire.monthly.drivers.v1",
+    driverReadings: "tire.monthly.driver-readings.v1",
     vehicleProfiles: "tire.monthly.vehicle-profiles.v1",
     userProfiles: "tire.monthly.user-profiles.v1"
   });
@@ -349,14 +350,72 @@
     });
   }
 
+  function normalizeStoredDriverReadings(source) {
+    if (!source || typeof source !== "object") {
+      return new Map();
+    }
+
+    const readingMap = new Map();
+    Object.keys(source).forEach(function (key) {
+      const normalizedKey = normalizeText(key);
+      const reading = normalizeDriverReading(source[key]);
+      if (!normalizedKey || !reading) {
+        return;
+      }
+      readingMap.set(normalizedKey, reading);
+    });
+    return readingMap;
+  }
+
+  function deriveDriverReadings(userProfiles) {
+    return userProfiles.reduce(function (result, profile) {
+      const reading = normalizeDriverReading(profile && profile.driverReading);
+      const profileKey = buildUserProfileKey(profile);
+      const nameKey = normalizeDriverNameKey(profile && profile.driverName);
+      if (!reading) {
+        return result;
+      }
+      if (profileKey) {
+        result[profileKey] = reading;
+      }
+      if (nameKey) {
+        result["name:" + nameKey] = reading;
+      }
+      return result;
+    }, {});
+  }
+
+  function mergeStoredDriverReadings(userProfiles, storedReadings) {
+    return userProfiles.map(function (profile) {
+      if (profile.driverReading) {
+        return profile;
+      }
+
+      const profileKey = buildUserProfileKey(profile);
+      const nameKey = normalizeDriverNameKey(profile.driverName);
+      const reading = storedReadings.get(profileKey)
+        || storedReadings.get("name:" + nameKey)
+        || storedReadings.get(nameKey)
+        || "";
+
+      return reading
+        ? { ...profile, driverReading: reading }
+        : profile;
+    });
+  }
+
   function readState() {
     const legacyVehicles = safeReadJson(STORAGE.vehicles, []);
     const legacyDrivers = safeReadJson(STORAGE.drivers, []);
+    const storedDriverReadings = normalizeStoredDriverReadings(safeReadJson(STORAGE.driverReadings, null));
     const rawVehicleProfiles = safeReadJson(STORAGE.vehicleProfiles, null);
     const rawUserProfiles = safeReadJson(STORAGE.userProfiles, null);
     const vehicleProfiles = normalizeVehicleProfiles(rawVehicleProfiles == null ? legacyVehicles : rawVehicleProfiles);
     const userProfiles = mergeLegacyDriverReadings(
-      normalizeUserProfiles(rawUserProfiles == null ? legacyDrivers : rawUserProfiles),
+      mergeStoredDriverReadings(
+        normalizeUserProfiles(rawUserProfiles == null ? legacyDrivers : rawUserProfiles),
+        storedDriverReadings
+      ),
       legacyDrivers
     );
 
@@ -374,6 +433,7 @@
     safeWriteJson(STORAGE.userProfiles, state.userProfiles);
     safeWriteJson(STORAGE.vehicles, state.vehicles);
     safeWriteJson(STORAGE.drivers, state.drivers);
+    safeWriteJson(STORAGE.driverReadings, deriveDriverReadings(state.userProfiles));
     return state;
   }
 

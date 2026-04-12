@@ -169,6 +169,9 @@ elements.sendConfirmDialog?.addEventListener("close", resetSendConfirmState);
 elements.tableHead.addEventListener("click", handleDayHeadTap);
 elements.tableBody.addEventListener("click", handleCheckTap);
 document.addEventListener("visibilitychange", handleVisibilityChange);
+window.addEventListener("pageshow", handlePageShow);
+window.addEventListener("focus", handleWindowFocus);
+window.addEventListener("storage", handleStorageChange);
 
 void bootAfterAuth();
 
@@ -203,13 +206,37 @@ async function boot() {
   elements.startButton.disabled = false;
 }
 
+function waitFor(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+async function waitForSharedSelectionReady(options = {}) {
+  const attemptCount = options.attemptCount || 6;
+  const waitMs = options.waitMs || 250;
+
+  for (let attempt = 0; attempt < attemptCount; attempt += 1) {
+    refreshSharedSelection();
+    const vehicle = state.sharedSelection.vehicle;
+    const driver = state.sharedSelection.driver;
+    if (vehicle && driver) {
+      return { vehicle, driver };
+    }
+    if (attempt < attemptCount - 1) {
+      await waitFor(waitMs);
+    }
+  }
+
+  return {
+    vehicle: state.sharedSelection.vehicle,
+    driver: state.sharedSelection.driver
+  };
+}
+
 async function handleStart(event) {
   event.preventDefault();
   clearEntryStatus();
 
-  refreshSharedSelection();
-  const vehicle = state.sharedSelection.vehicle;
-  const driver = state.sharedSelection.driver;
+  const { vehicle, driver } = await waitForSharedSelectionReady();
 
   if (!vehicle || !driver) {
     setEntryStatus("ランチャーの設定で車番と運転者（点検者）を選択してください。", true);
@@ -263,6 +290,28 @@ function handleVisibilityChange() {
     return;
   }
   syncThemeFromLauncher();
+  refreshEntrySelectionIfIdle();
+}
+
+function handlePageShow() {
+  syncThemeFromLauncher();
+  refreshEntrySelectionIfIdle();
+}
+
+function handleWindowFocus() {
+  syncThemeFromLauncher();
+  refreshEntrySelectionIfIdle();
+}
+
+function handleStorageChange(event) {
+  if (event.storageArea !== window.localStorage) {
+    return;
+  }
+  syncThemeFromLauncher();
+  refreshEntrySelectionIfIdle();
+}
+
+function refreshEntrySelectionIfIdle() {
   if (state.session) {
     return;
   }
@@ -392,28 +441,35 @@ function getSendPlan() {
   const month = state.targetMonth;
   const record = getRecordForMonth(month);
   const monthDraft = state.draftsByMonth[month] || {};
+  const persistedDays = state.pendingDays.filter((day) => {
+    const dayKey = String(day);
+    return isHolidaySelected(month, dayKey) || hasAnyCheckValue(monthDraft[dayKey]);
+  });
   const completeDays = state.pendingDays.filter((day) => {
     const dayKey = String(day);
     return isHolidaySelected(month, dayKey) || isDayComplete(monthDraft[dayKey]);
   });
 
-  if (!completeDays.length) {
-    window.alert("1日分すべて入力できた日付がありません。未完了の日はそのまま残ります。");
+  if (!persistedDays.length) {
+    window.alert("入力済み、または休み指定した日付がありません。");
     return null;
   }
 
-  const nextChecksByDay = omitCheckDays(record.checksByDay, completeDays);
+  const completeDaySet = new Set(completeDays.map((day) => String(day)));
+  const nextChecksByDay = omitCheckDays(record.checksByDay, persistedDays);
   const nextHolidayDays = new Set(record.holidayDays);
   const maintenanceDays = [];
-  for (const day of completeDays) {
+  for (const day of persistedDays) {
     const dayKey = String(day);
     if (isHolidaySelected(month, dayKey)) {
       nextHolidayDays.add(day);
     } else {
       const dayChecks = normalizeDayChecks(monthDraft[dayKey] || createEmptyDayChecks());
-      nextChecksByDay[dayKey] = dayChecks;
       nextHolidayDays.delete(day);
-      if (hasMaintenanceMark(dayChecks)) {
+      if (hasAnyCheckValue(dayChecks)) {
+        nextChecksByDay[dayKey] = dayChecks;
+      }
+      if (completeDaySet.has(dayKey) && hasMaintenanceMark(dayChecks)) {
         maintenanceDays.push(day);
       }
     }
@@ -540,6 +596,7 @@ function createFirestoreStore(db, firestoreModule) {
   const {
     collection,
     doc,
+    getDoc,
     getDocs,
     query,
     serverTimestamp,
@@ -581,17 +638,29 @@ function createFirestoreStore(db, firestoreModule) {
     },
     async saveRecord(record) {
       const ref = doc(db, appSettings.collectionName, buildRecordId(record.month, record.vehicle, record.driver));
+      const snapshot = await getDoc(ref);
+      const existingData = snapshot.exists() ? snapshot.data() : {};
+      const normalizedRecord = normalizeRecord(record);
+      const holidayDays = Array.isArray(normalizedRecord.holidayDays) ? normalizedRecord.holidayDays : [];
+      const holidayEntries = holidayDays.map((day) => [String(day), true]);
       await setDoc(
         ref,
         {
-          ...record,
-          vehicleNormalized: normalizeVehicleKey(record.vehicle),
-          driverNormalized: normalizeDriverLookupKey(record.driver),
-          vehicleAliases: [normalizeVehicleKey(record.vehicle)].filter(Boolean),
-          driverAliases: [String(record.driver || "").trim()].filter(Boolean),
+          ...existingData,
+          ...normalizedRecord,
+          holidays: holidayDays.map((day) => String(day)),
+          holidayFlagsByDay: Object.fromEntries(holidayEntries),
+          isHolidayByDay: Object.fromEntries(holidayEntries),
+          vehicleRaw: normalizedRecord.vehicle,
+          vehicleDisplay: normalizedRecord.vehicle,
+          vehicleNormalized: normalizeVehicleKey(normalizedRecord.vehicle),
+          driverRaw: normalizedRecord.driver,
+          driverDisplay: normalizedRecord.driver,
+          driverNormalized: normalizeDriverLookupKey(normalizedRecord.driver),
+          vehicleAliases: [normalizeVehicleKey(normalizedRecord.vehicle)].filter(Boolean),
+          driverAliases: [String(normalizedRecord.driver || "").trim()].filter(Boolean),
           updatedAt: serverTimestamp()
-        },
-        { merge: true }
+        }
       );
     }
   };
@@ -954,14 +1023,27 @@ function returnToLauncherHome() {
   window.location.replace("../index.html");
 }
 
+function readSharedLauncherState() {
+  if (!sharedSettings) {
+    return null;
+  }
+  if (typeof sharedSettings.readState === "function") {
+    return sharedSettings.readState();
+  }
+  if (typeof sharedSettings.ensureState === "function") {
+    return sharedSettings.ensureState();
+  }
+  return null;
+}
+
 function refreshSharedSelection() {
-  if (!sharedSettings || typeof sharedSettings.ensureState !== "function") {
+  const sharedState = readSharedLauncherState();
+  if (!sharedState) {
     state.sharedSelection = { vehicle: "", driver: "" };
     renderSharedSelection();
     return;
   }
 
-  const sharedState = sharedSettings.ensureState();
   state.sharedSelection = {
     vehicle: sharedState.current.vehicleNumber || "",
     driver: sharedState.current.driverName || ""
@@ -1600,12 +1682,12 @@ function addMonths(yearMonth, delta) {
 }
 
 function syncThemeFromLauncher() {
-  if (!sharedSettings || typeof sharedSettings.ensureState !== "function") {
+  const sharedState = readSharedLauncherState();
+  if (!sharedState) {
     applyTheme("light");
     return;
   }
 
-  const sharedState = sharedSettings.ensureState();
   applyTheme(sharedState.theme);
 }
 

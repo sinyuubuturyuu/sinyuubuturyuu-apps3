@@ -2,6 +2,7 @@
 import { getAuth, updateCurrentUser } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -34,36 +35,40 @@ const EXCEL_DRAWING_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/200
 const EXCEL_DRAWING_MAIN_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/main";
 const EXCEL_DAY_COLUMNS = Array.from({ length: 31 }, (_, index) => columnNumberToLabel(index + 10));
 const EXCEL_WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
+const EXCEL_HOLIDAY_FILL_RGB = "FFF7DDD5";
 const EXCEL_CHECK_START_ROW = 7;
 const EXCEL_BOTTOM_STAMP_ROW = 29;
 const EXCEL_IMAGE_RELATIONSHIP_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
 const EXCEL_DRAWING_RELATIONSHIP_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing";
 const EXCEL_PNG_CONTENT_TYPE = "image/png";
 const EXCEL_EMUS_PER_PIXEL = 9525;
+const EXCEL_BOTTOM_STAMP_ROW_SPAN = 2;
 const EXCEL_STAMP_IMAGE_SIZES = {
   large: { width: 54, height: 54 },
-  small: { width: 22, height: 22 }
+  small: { width: 20, height: 20 }
+};
+const EXCEL_CUSTOM_STAMP_ASSETS = {
+  "若本:small": new URL("./assets/wakamoto-stamp.svg", import.meta.url).href
 };
 let jsZipModulePromise = null;
+const stampSvgMarkupPromiseCache = new Map();
 
 const firebaseConfig = window.APP_FIREBASE_CONFIG || {
-  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
-  authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
-  projectId: "sinyuubuturyuu-86aeb",
-  storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
-  messagingSenderId: "213947378677",
-  appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
-  measurementId: "G-F9VYGCTHEV"
+  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
+  authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
+  projectId: "sinyuubuturyuu-dev",
+  storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
+  messagingSenderId: "997788842966",
+  appId: "1:997788842966:web:e011e7340e2af863c40277"
 };
 
 const referenceFirebaseConfig = {
-  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
-  authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
-  projectId: "sinyuubuturyuu-86aeb",
-  storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
-  messagingSenderId: "213947378677",
-  appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
-  measurementId: "G-F9VYGCTHEV"
+  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
+  authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
+  projectId: "sinyuubuturyuu-dev",
+  storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
+  messagingSenderId: "997788842966",
+  appId: "1:997788842966:web:e011e7340e2af863c40277"
 };
 
 const FIRESTORE_COLLECTION = "getujinitijyoutenkenhyou";
@@ -135,6 +140,7 @@ const vehicleTextEl = document.getElementById("vehicleText");
 const driverTextEl = document.getElementById("driverText");
 const statusEl = document.getElementById("status");
 const toolbarEl = document.getElementById("toolbar");
+const monthTabsEl = document.getElementById("monthTabs");
 const inspectionTableEl = document.getElementById("inspectionTable");
 const datesRowEl = document.getElementById("datesRow");
 const daysRowEl = document.getElementById("daysRow");
@@ -164,11 +170,20 @@ const state = {
   maintenanceRecordsByDay: {},
   holidayDays: [],
   loadedDocId: null,
+  activeMonthKey: formatMonthKey(Number(monthEl.value) || 2026, 4),
+  activeFiscalYearStart: null,
+  recordsByMonth: {},
+  suppressMonthInputSync: false,
   vehicleOptions: [],
   driverOptions: [],
   driverStorageMap: {}
 };
 let maintenanceNoteDialogResolve = null;
+
+function getSelectedFiscalYearStart() {
+  const year = Number(monthEl.value);
+  return Number.isInteger(year) && year > 2000 ? year : 2026;
+}
 
 function columnNumberToLabel(columnNumber) {
   let value = columnNumber;
@@ -724,15 +739,195 @@ async function loadReferenceOptions() {
 }
 
 function getSelectedYearMonth() {
-  const [yearText, monthText] = monthEl.value.split("-");
-  const year = Number(yearText) || 2026;
-  const month = Number(monthText) || 1;
-  return { year, month };
+  if (state.activeMonthKey) {
+    return parseYearMonthKey(state.activeMonthKey);
+  }
+  return {
+    year: getSelectedFiscalYearStart(),
+    month: 4
+  };
 }
 
 function getDaysInSelectedMonth() {
   const { year, month } = getSelectedYearMonth();
   return new Date(year, month, 0).getDate();
+}
+
+function getDaysInMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
+
+function formatMonthKey(year, month) {
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+function getFiscalYearStartYear(year, month) {
+  return month >= 4 ? year : year - 1;
+}
+
+function buildFiscalYearMonthEntries(year, month) {
+  const fiscalYearStart = getFiscalYearStartYear(year, month);
+  return Array.from({ length: 12 }, (_, index) => {
+    const offsetMonth = 4 + index;
+    const entryYear = fiscalYearStart + Math.floor((offsetMonth - 1) / 12);
+    const entryMonth = ((offsetMonth - 1) % 12) + 1;
+    return {
+      fiscalYearStart,
+      year: entryYear,
+      month: entryMonth,
+      monthKey: formatMonthKey(entryYear, entryMonth),
+      sheetName: `${entryMonth}月`
+    };
+  });
+}
+
+function cloneRecordState(recordState = {}, monthKey = "") {
+  return {
+    month: monthKey || recordState.month || "",
+    checks: { ...(recordState.checks || {}) },
+    operationManager: recordState.operationManager || "",
+    maintenanceManager: recordState.maintenanceManager || "",
+    maintenanceBottomByDay: { ...(recordState.maintenanceBottomByDay || {}) },
+    maintenanceRecordsByDay: { ...(recordState.maintenanceRecordsByDay || {}) },
+    holidayDays: Array.isArray(recordState.holidayDays) ? [...recordState.holidayDays] : [],
+    loadedDocId: recordState.loadedDocId || null
+  };
+}
+
+function createEmptyMonthRecordState(monthKey) {
+  return cloneRecordState({ month: monthKey }, monthKey);
+}
+
+function getCurrentFiscalEntries() {
+  return getMonthEntriesForFiscalYearStart(getSelectedFiscalYearStart());
+}
+
+function getMonthEntriesForFiscalYearStart(fiscalYearStart) {
+  return buildFiscalYearMonthEntries(fiscalYearStart, 4);
+}
+
+function getCurrentFiscalYearStart() {
+  const selected = getSelectedYearMonth();
+  const activeMonthKey = state.activeMonthKey || formatMonthKey(selected.year, selected.month);
+  const { year, month } = parseYearMonthKey(activeMonthKey);
+  return getFiscalYearStartYear(year, month);
+}
+
+function parseYearMonthKey(monthKey) {
+  const [yearText, monthText] = String(monthKey || "").split("-");
+  return {
+    year: Number(yearText) || 2026,
+    month: Number(monthText) || 1
+  };
+}
+
+function snapshotCurrentMonthState() {
+  const monthKey = state.activeMonthKey || formatMonthKey(getSelectedFiscalYearStart(), 4);
+  return cloneRecordState({
+    month: monthKey,
+    checks: state.checks,
+    operationManager: state.operationManager,
+    maintenanceManager: state.maintenanceManager,
+    maintenanceBottomByDay: state.maintenanceBottomByDay,
+    maintenanceRecordsByDay: state.maintenanceRecordsByDay,
+    holidayDays: state.holidayDays,
+    loadedDocId: state.loadedDocId
+  }, monthKey);
+}
+
+function syncCurrentMonthStateToAnnualMap() {
+  const monthKey = state.activeMonthKey || formatMonthKey(getSelectedFiscalYearStart(), 4);
+  if (!monthKey) {
+    return;
+  }
+  state.recordsByMonth[monthKey] = snapshotCurrentMonthState();
+}
+
+function applyMonthRecordState(monthKey, recordState = createEmptyMonthRecordState(monthKey)) {
+  const nextRecord = cloneRecordState(recordState, monthKey);
+  state.activeMonthKey = monthKey;
+  state.checks = nextRecord.checks;
+  state.operationManager = nextRecord.operationManager;
+  state.maintenanceManager = nextRecord.maintenanceManager;
+  state.maintenanceBottomByDay = nextRecord.maintenanceBottomByDay;
+  state.maintenanceRecordsByDay = nextRecord.maintenanceRecordsByDay;
+  state.holidayDays = nextRecord.holidayDays;
+  state.loadedDocId = nextRecord.loadedDocId;
+}
+
+function getRecordStateForMonth(monthKey) {
+  return cloneRecordState(state.recordsByMonth[monthKey] || createEmptyMonthRecordState(monthKey), monthKey);
+}
+
+function setMonthInputValue(monthKey) {
+  state.suppressMonthInputSync = true;
+  const { year, month } = parseYearMonthKey(monthKey);
+  monthEl.value = String(getFiscalYearStartYear(year, month));
+  state.suppressMonthInputSync = false;
+}
+
+function monthRecordHasContent(recordState = {}) {
+  return Boolean(
+    Object.keys(recordState.checks || {}).length
+    || (recordState.operationManager || "").trim()
+    || (recordState.maintenanceManager || "").trim()
+    || Object.keys(recordState.maintenanceBottomByDay || {}).length
+    || Object.keys(recordState.maintenanceRecordsByDay || {}).length
+    || (recordState.holidayDays || []).length
+  );
+}
+
+function renderMonthTabs() {
+  if (!monthTabsEl) {
+    return;
+  }
+
+  monthTabsEl.replaceChildren();
+  const fiscalEntries = getCurrentFiscalEntries();
+  state.activeFiscalYearStart = fiscalEntries[0]?.fiscalYearStart ?? null;
+
+  fiscalEntries.forEach((entry) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `month-tab-button${entry.monthKey === state.activeMonthKey ? " is-active" : ""}`;
+    const monthRecord = entry.monthKey === state.activeMonthKey
+      ? snapshotCurrentMonthState()
+      : state.recordsByMonth[entry.monthKey];
+    if (monthRecordHasContent(monthRecord)) {
+      button.classList.add("is-loaded");
+    }
+    button.textContent = `${entry.month}月`;
+    button.addEventListener("click", () => {
+      switchActiveMonth(entry.monthKey);
+    });
+    monthTabsEl.append(button);
+  });
+}
+
+function switchActiveMonth(monthKey, options = {}) {
+  const { preserveCurrent = true, keepStatus = true } = options;
+  if (!monthKey) {
+    return;
+  }
+
+  if (preserveCurrent) {
+    syncCurrentMonthStateToAnnualMap();
+  }
+
+  applyMonthRecordState(monthKey, getRecordStateForMonth(monthKey));
+  setMonthInputValue(monthKey);
+  syncHeaderInfo();
+  renderMonthTabs();
+  renderDays();
+  renderBody();
+  renderBottomStampRow();
+  setStamp("operationManager", state.operationManager);
+  setStamp("maintenanceManager", state.maintenanceManager);
+  syncToolbarWidth();
+
+  if (!keepStatus) {
+    setStatus("");
+  }
 }
 
 function checkKey(itemIndex, day) {
@@ -920,8 +1115,7 @@ function clearHolidayChecks(day) {
   }
 }
 
-function inferHolidayDaysFromChecks(checks) {
-  const daysInMonth = getDaysInSelectedMonth();
+function inferHolidayDaysFromChecks(checks, daysInMonth = getDaysInSelectedMonth()) {
   const itemCount = getInspectionItemCount();
   const inferredDays = [];
 
@@ -946,14 +1140,14 @@ function inferHolidayDaysFromChecks(checks) {
   return inferredDays;
 }
 
-function mergeHolidayDays(days, checks = state.checks) {
-  return [...new Set([...(days || []), ...inferHolidayDaysFromChecks(checks)].map((day) => Number(day)))]
-    .filter((day) => Number.isInteger(day) && day >= 1 && day <= getDaysInSelectedMonth())
+function mergeHolidayDays(days, checks = state.checks, daysInMonth = getDaysInSelectedMonth()) {
+  return [...new Set([...(days || []), ...inferHolidayDaysFromChecks(checks, daysInMonth)].map((day) => Number(day)))]
+    .filter((day) => Number.isInteger(day) && day >= 1 && day <= daysInMonth)
     .sort((left, right) => left - right);
 }
 
-function buildHolidayPayload(days = state.holidayDays, checks = state.checks) {
-  const normalizedDays = mergeHolidayDays(days, checks);
+function buildHolidayPayload(days = state.holidayDays, checks = state.checks, daysInMonth = getDaysInSelectedMonth()) {
+  const normalizedDays = mergeHolidayDays(days, checks, daysInMonth);
   const dayEntries = normalizedDays.map((day) => [String(day), true]);
   return {
     holidayDays: normalizedDays,
@@ -963,8 +1157,17 @@ function buildHolidayPayload(days = state.holidayDays, checks = state.checks) {
   };
 }
 
-function extractHolidayDays(recordData = {}, checks = {}) {
-  const collectedDays = [];
+function collectLegacyHolidayDays(checksByDay = {}) {
+  return Object.entries(checksByDay || {})
+    .filter(([, valuesByField]) => {
+      const values = CHECK_FIELD_ORDER.map((fieldKey) => String(valuesByField?.[fieldKey] || "").trim());
+      return values.length > 0 && values.every((value) => value === HOLIDAY_MARK);
+    })
+    .map(([dayText]) => Number(dayText));
+}
+
+function extractHolidayDays(recordData = {}, checks = {}, daysInMonth = getDaysInSelectedMonth()) {
+  const collectedDays = collectLegacyHolidayDays(recordData.checksByDay || {});
 
   if (Array.isArray(recordData.holidayDays)) {
     collectedDays.push(...recordData.holidayDays);
@@ -984,7 +1187,7 @@ function extractHolidayDays(recordData = {}, checks = {}) {
     });
   });
 
-  return mergeHolidayDays(collectedDays, checks);
+  return mergeHolidayDays(collectedDays, checks, daysInMonth);
 }
 
 function syncHolidayChecks() {
@@ -1053,6 +1256,34 @@ function buildHankoSvgMarkup(name, size = "small") {
   <circle cx="${width / 2}" cy="${height / 2}" r="${(Math.min(width, height) / 2) - inset}" fill="rgba(255,255,255,0.18)" stroke="#c61717" stroke-width="${strokeWidth}" />
   <text x="50%" y="53%" text-anchor="middle" dominant-baseline="middle" fill="#c61717" font-size="${fontSize}" font-weight="700" font-family="'Yu Gothic', 'Hiragino Kaku Gothic ProN', sans-serif" letter-spacing="${letterSpacing}">${escapeXmlText(trimmedName)}</text>
 </svg>`;
+}
+
+async function fetchStampSvgMarkup(assetUrl) {
+  if (!stampSvgMarkupPromiseCache.has(assetUrl)) {
+    stampSvgMarkupPromiseCache.set(assetUrl, (async () => {
+      const response = await fetch(assetUrl, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`印画像を取得できませんでした: HTTP ${response.status}`);
+      }
+      return response.text();
+    })());
+  }
+
+  return stampSvgMarkupPromiseCache.get(assetUrl);
+}
+
+async function getStampSvgMarkup(name, size = "small") {
+  const trimmedName = String(name || "").trim();
+  if (!trimmedName) {
+    return "";
+  }
+
+  const assetUrl = EXCEL_CUSTOM_STAMP_ASSETS[`${trimmedName}:${size}`];
+  if (assetUrl) {
+    return fetchStampSvgMarkup(assetUrl);
+  }
+
+  return buildHankoSvgMarkup(trimmedName, size);
 }
 
 async function renderSvgToPngArrayBuffer(svgMarkup, width, height) {
@@ -1162,7 +1393,7 @@ function renderDays() {
 
   const { year, month } = getSelectedYearMonth();
   const daysInMonth = getDaysInSelectedMonth();
-  const managerSpan = 4;
+  const managerSpan = 3;
   const titleSpan = Math.max(1, daysInMonth - managerSpan * 2);
   titleHeadEl.colSpan = titleSpan;
   driverHeadEl.colSpan = titleSpan;
@@ -1285,7 +1516,7 @@ function renderBody() {
 }
 
 function syncHeaderInfo() {
-  const [, month] = monthEl.value.split("-");
+  const month = state.activeMonthKey ? String(parseYearMonthKey(state.activeMonthKey).month) : "";
   monthTextEl.textContent = month ? String(Number(month)) : "-";
   vehicleTextEl.textContent = vehicleEl.value.trim() || "-";
   driverTextEl.textContent = stripDriverReading(driverEl.value) || "-";
@@ -1314,6 +1545,14 @@ function resetRecordState() {
   state.loadedDocId = null;
 }
 
+function resetAnnualRecordState(monthKey = formatMonthKey(getSelectedFiscalYearStart(), 4)) {
+  const { year, month } = parseYearMonthKey(monthKey);
+  state.recordsByMonth = {};
+  state.activeMonthKey = monthKey;
+  state.activeFiscalYearStart = getFiscalYearStartYear(year, month);
+  resetRecordState();
+}
+
 function sanitizeFileNamePart(value, fallback) {
   const normalizedValue = normalizeOptionValue(value);
   if (!normalizedValue) {
@@ -1335,7 +1574,7 @@ function downloadBlob(blob, fileName) {
 }
 
 function buildExcelFileName() {
-  const month = monthEl.value || "month";
+  const month = state.activeMonthKey || `${getSelectedFiscalYearStart()}年度`;
   const vehicle = sanitizeFileNamePart(vehicleEl.value, "vehicle");
   const driver = sanitizeFileNamePart(stripDriverReading(driverEl.value), "driver");
   return `月次日常点検_${month}_${vehicle}_${driver}.xlsx`;
@@ -1475,7 +1714,7 @@ async function createExcelStampMediaStore(workbook, contentTypesDoc) {
       if (!mediaCache.has(cacheKey)) {
         mediaCache.set(cacheKey, (async () => {
           const dimensions = EXCEL_STAMP_IMAGE_SIZES[size] || EXCEL_STAMP_IMAGE_SIZES.small;
-          const svgMarkup = buildHankoSvgMarkup(trimmedName, size);
+          const svgMarkup = await getStampSvgMarkup(trimmedName, size);
           const imageBuffer = await renderSvgToPngArrayBuffer(svgMarkup, dimensions.width, dimensions.height);
           const mediaPath = `xl/media/stamp-${nextMediaIndex}.png`;
           nextMediaIndex += 1;
@@ -1549,10 +1788,252 @@ function getInspectionSheetTargets(workbookDoc, workbookRelsDoc) {
     .filter((target) => target && /^日常点検記録表/.test(target.sheet.getAttribute("name")));
 }
 
+function getWorksheetSheetTargets(workbookDoc, workbookRelsDoc) {
+  const sheets = Array.from(workbookDoc.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "sheet"));
+  return sheets
+    .map((sheet) => getWorkbookSheetTarget(workbookDoc, workbookRelsDoc, sheet.getAttribute("name")))
+    .filter(Boolean);
+}
+
+function getWorkbookRelationshipNodes(workbookRelsDoc) {
+  return Array.from(workbookRelsDoc.getElementsByTagNameNS(PACKAGE_RELATIONSHIP_NAMESPACE, "Relationship"));
+}
+
+function getNextNumericSuffix(workbook, pattern) {
+  const matches = Object.keys(workbook.files)
+    .map((filePath) => Number(filePath.match(pattern)?.[1] || 0))
+    .filter((value) => value > 0);
+  return matches.length ? Math.max(...matches) + 1 : 1;
+}
+
+function removeWorkbookRelationshipNode(workbookRelsDoc, relationshipId) {
+  const relationshipNode = getWorkbookRelationshipNodes(workbookRelsDoc)
+    .find((node) => node.getAttribute("Id") === relationshipId);
+  if (relationshipNode?.parentNode) {
+    relationshipNode.parentNode.removeChild(relationshipNode);
+  }
+}
+
+function removeContentTypeOverride(contentTypesDoc, partName) {
+  const normalizedPartName = partName.startsWith("/") ? partName : `/${partName}`;
+  const overrideNode = Array.from(contentTypesDoc.getElementsByTagNameNS(EXCEL_CONTENT_TYPES_NAMESPACE, "Override"))
+    .find((node) => node.getAttribute("PartName") === normalizedPartName);
+  if (overrideNode?.parentNode) {
+    overrideNode.parentNode.removeChild(overrideNode);
+  }
+}
+
+function ensureContentTypeOverride(contentTypesDoc, partName, contentType) {
+  const normalizedPartName = partName.startsWith("/") ? partName : `/${partName}`;
+  const existing = Array.from(contentTypesDoc.getElementsByTagNameNS(EXCEL_CONTENT_TYPES_NAMESPACE, "Override"))
+    .find((node) => node.getAttribute("PartName") === normalizedPartName);
+  if (existing) {
+    existing.setAttribute("ContentType", contentType);
+    return;
+  }
+
+  const overrideNode = contentTypesDoc.createElementNS(EXCEL_CONTENT_TYPES_NAMESPACE, "Override");
+  overrideNode.setAttribute("PartName", normalizedPartName);
+  overrideNode.setAttribute("ContentType", contentType);
+  contentTypesDoc.documentElement.append(overrideNode);
+}
+
+function removeContentTypeOverridesMatching(contentTypesDoc, pattern) {
+  Array.from(contentTypesDoc.getElementsByTagNameNS(EXCEL_CONTENT_TYPES_NAMESPACE, "Override"))
+    .filter((node) => pattern.test(node.getAttribute("PartName") || ""))
+    .forEach((node) => node.parentNode?.removeChild(node));
+}
+
+function removeWorkbookRelationshipsByType(workbookRelsDoc, relationshipType) {
+  getWorkbookRelationshipNodes(workbookRelsDoc)
+    .filter((node) => node.getAttribute("Type") === relationshipType)
+    .forEach((node) => node.parentNode?.removeChild(node));
+}
+
+function removeZipEntriesMatching(workbook, pattern) {
+  Object.keys(workbook.files)
+    .filter((filePath) => pattern.test(filePath))
+    .forEach((filePath) => workbook.remove(filePath));
+}
+
+async function createAnnualExcelSheetTargets(workbook, workbookDoc, workbookRelsDoc, contentTypesDoc) {
+  const sheetsRoot = workbookDoc.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "sheets")[0];
+  if (!sheetsRoot) {
+    throw new Error("Excelテンプレートのシート一覧を取得できません");
+  }
+
+  const worksheetTargets = getWorksheetSheetTargets(workbookDoc, workbookRelsDoc);
+  const sourceTarget = getWorkbookSheetTarget(workbookDoc, workbookRelsDoc, EXCEL_TEMPLATE_SHEET_NAME)
+    || getInspectionSheetTargets(workbookDoc, workbookRelsDoc)
+      .find((target) => /^日常点検記録表\d+月$/.test(target.sheet.getAttribute("name")))
+    || worksheetTargets[0];
+  if (!sourceTarget) {
+    throw new Error("年度シートを生成するための月次シートを特定できません");
+  }
+
+  const sourceWorksheetXml = await workbook.file(sourceTarget.path)?.async("string");
+  if (!sourceWorksheetXml) {
+    throw new Error(`Excelテンプレートの元シートを開けません: ${sourceTarget.path}`);
+  }
+
+  const sourceWorksheetRelsPath = getWorksheetRelationshipsPath(sourceTarget.path);
+  const sourceWorksheetRelsXml = await workbook.file(sourceWorksheetRelsPath)?.async("string");
+  if (!sourceWorksheetRelsXml) {
+    throw new Error(`Excelテンプレートの元シート関係を開けません: ${sourceWorksheetRelsPath}`);
+  }
+
+  const sourceWorksheetDoc = parseXmlDocument(sourceWorksheetXml);
+  const sourceDrawingPath = await getWorksheetDrawingPath(workbook, sourceWorksheetDoc, sourceTarget.path);
+  if (!sourceDrawingPath) {
+    throw new Error("Excelテンプレートの元シート drawing を特定できません");
+  }
+
+  const sourceDrawingXml = await workbook.file(sourceDrawingPath)?.async("string");
+  if (!sourceDrawingXml) {
+    throw new Error(`Excelテンプレートの元 drawing を開けません: ${sourceDrawingPath}`);
+  }
+
+  Array.from(sheetsRoot.childNodes)
+    .filter((node) => node.nodeType === Node.ELEMENT_NODE && node.localName === "sheet")
+    .forEach((node) => node.parentNode?.removeChild(node));
+
+  removeWorkbookRelationshipsByType(
+    workbookRelsDoc,
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
+  );
+  removeContentTypeOverridesMatching(contentTypesDoc, /^\/xl\/worksheets\/sheet\d+\.xml$/);
+  removeContentTypeOverridesMatching(contentTypesDoc, /^\/xl\/drawings\/drawing\d+\.xml$/);
+  removeZipEntriesMatching(workbook, /^xl\/worksheets\/sheet\d+\.xml$/);
+  removeZipEntriesMatching(workbook, /^xl\/worksheets\/_rels\/sheet\d+\.xml\.rels$/);
+  removeZipEntriesMatching(workbook, /^xl\/drawings\/drawing\d+\.xml$/);
+  removeZipEntriesMatching(workbook, /^xl\/drawings\/_rels\/drawing\d+\.xml\.rels$/);
+
+  const nextRelationshipNumberStart = getWorkbookRelationshipNodes(workbookRelsDoc)
+    .reduce((max, node) => Math.max(max, Number((node.getAttribute("Id") || "").replace(/^rId/, "")) || 0), 0) + 1;
+  let nextRelationshipNumber = nextRelationshipNumberStart;
+
+  const generatedTargets = [];
+  const { year, month } = getSelectedYearMonth();
+  const fiscalMonths = buildFiscalYearMonthEntries(year, month);
+
+  fiscalMonths.forEach((entry, index) => {
+    const sheetNumber = index + 1;
+    const sheetFilePath = `xl/worksheets/sheet${sheetNumber}.xml`;
+    const drawingPath = `xl/drawings/drawing${sheetNumber}.xml`;
+    const worksheetRelsPath = getWorksheetRelationshipsPath(sheetFilePath);
+    const relationshipId = `rId${nextRelationshipNumber}`;
+    nextRelationshipNumber += 1;
+
+    const worksheetRelsDoc = parseXmlDocument(sourceWorksheetRelsXml);
+    const drawingRelationshipNode = Array.from(
+      worksheetRelsDoc.getElementsByTagNameNS(PACKAGE_RELATIONSHIP_NAMESPACE, "Relationship")
+    ).find((node) => node.getAttribute("Type") === EXCEL_DRAWING_RELATIONSHIP_TYPE);
+    if (drawingRelationshipNode) {
+      drawingRelationshipNode.setAttribute("Target", `../drawings/${getZipBaseName(drawingPath)}`);
+    }
+
+    workbook.file(sheetFilePath, sourceWorksheetXml);
+    workbook.file(worksheetRelsPath, serializeXmlDocument(worksheetRelsDoc));
+    workbook.file(drawingPath, sourceDrawingXml);
+
+    ensureContentTypeOverride(
+      contentTypesDoc,
+      sheetFilePath,
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"
+    );
+    ensureContentTypeOverride(
+      contentTypesDoc,
+      drawingPath,
+      "application/vnd.openxmlformats-officedocument.drawing+xml"
+    );
+
+    const relationshipNode = workbookRelsDoc.createElementNS(PACKAGE_RELATIONSHIP_NAMESPACE, "Relationship");
+    relationshipNode.setAttribute("Id", relationshipId);
+    relationshipNode.setAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet");
+    relationshipNode.setAttribute("Target", sheetFilePath.replace(/^xl\//, ""));
+    workbookRelsDoc.documentElement.append(relationshipNode);
+
+    const sheetNode = workbookDoc.createElementNS(EXCEL_SHEET_NAMESPACE, "sheet");
+    sheetNode.setAttribute("name", entry.sheetName);
+    sheetNode.setAttribute("sheetId", String(sheetNumber));
+    sheetNode.setAttributeNS(EXCEL_RELATIONSHIP_NAMESPACE, "r:id", relationshipId);
+    sheetsRoot.append(sheetNode);
+
+    generatedTargets.push({
+      ...entry,
+      sheet: sheetNode,
+      path: sheetFilePath
+    });
+  });
+
+  return generatedTargets;
+}
+
 function getElementChildren(parentNode, localName) {
   return Array.from(parentNode.childNodes).filter((child) => (
     child.nodeType === Node.ELEMENT_NODE && (!localName || child.localName === localName)
   ));
+}
+
+function normalizeExcelRgb(value) {
+  const normalizedValue = String(value || "").trim().toUpperCase();
+  if (!normalizedValue) {
+    return "";
+  }
+  if (/^[0-9A-F]{6}$/.test(normalizedValue)) {
+    return `FF${normalizedValue}`;
+  }
+  return normalizedValue;
+}
+
+function getStyleFillNodes(stylesDoc) {
+  const fillsRoot = stylesDoc.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "fills")[0];
+  return fillsRoot ? getElementChildren(fillsRoot, "fill") : [];
+}
+
+function ensureSolidFill(stylesDoc, rgb) {
+  const fillsRoot = stylesDoc.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "fills")[0];
+  if (!fillsRoot) {
+    return "0";
+  }
+
+  const targetRgb = normalizeExcelRgb(rgb);
+  const existingFillIndex = getStyleFillNodes(stylesDoc).findIndex((fillNode) => {
+    const patternFill = fillNode.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "patternFill")[0];
+    const fgColor = patternFill?.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "fgColor")[0];
+    return patternFill?.getAttribute("patternType") === "solid"
+      && normalizeExcelRgb(fgColor?.getAttribute("rgb")) === targetRgb;
+  });
+  if (existingFillIndex >= 0) {
+    return String(existingFillIndex);
+  }
+
+  const fillNode = stylesDoc.createElementNS(EXCEL_SHEET_NAMESPACE, "fill");
+  const patternFillNode = stylesDoc.createElementNS(EXCEL_SHEET_NAMESPACE, "patternFill");
+  const fgColorNode = stylesDoc.createElementNS(EXCEL_SHEET_NAMESPACE, "fgColor");
+  const bgColorNode = stylesDoc.createElementNS(EXCEL_SHEET_NAMESPACE, "bgColor");
+
+  patternFillNode.setAttribute("patternType", "solid");
+  fgColorNode.setAttribute("rgb", targetRgb);
+  bgColorNode.setAttribute("indexed", "64");
+  patternFillNode.append(fgColorNode, bgColorNode);
+  fillNode.append(patternFillNode);
+  fillsRoot.append(fillNode);
+  fillsRoot.setAttribute("count", String(getElementChildren(fillsRoot, "fill").length));
+
+  return String(getStyleFillNodes(stylesDoc).length - 1);
+}
+
+function getDefaultInactiveFillId(stylesDoc) {
+  const fillNodes = getStyleFillNodes(stylesDoc);
+  const inactiveFillIndex = fillNodes.findIndex((fillNode, index) => {
+    if (index <= 1) {
+      return false;
+    }
+    const patternFill = fillNode.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "patternFill")[0];
+    return patternFill?.getAttribute("patternType") === "solid";
+  });
+  return String(inactiveFillIndex >= 0 ? inactiveFillIndex : 0);
 }
 
 function buildStyleSignature(xfNode) {
@@ -1569,6 +2050,9 @@ function buildStyleFillVariantMap(stylesDoc) {
   if (!cellXfs) {
     return new Map();
   }
+
+  const holidayFillId = ensureSolidFill(stylesDoc, EXCEL_HOLIDAY_FILL_RGB);
+  const inactiveFillId = getDefaultInactiveFillId(stylesDoc);
 
   const xfNodes = getElementChildren(cellXfs, "xf");
   const styleIndexByFillAndSignature = new Map();
@@ -1606,8 +2090,8 @@ function buildStyleFillVariantMap(stylesDoc) {
   xfNodes.forEach((xfNode, styleIndex) => {
     variantMap.set(styleIndex, {
       normal: ensureStyleVariant(xfNode, "0"),
-      holiday: ensureStyleVariant(xfNode, "2"),
-      inactive: ensureStyleVariant(xfNode, "3")
+      holiday: ensureStyleVariant(xfNode, holidayFillId),
+      inactive: ensureStyleVariant(xfNode, inactiveFillId)
     });
   });
 
@@ -1716,11 +2200,19 @@ function createDrawingAnchor(worksheetDoc, placement, relationshipId, shapeId) {
 }
 
 function getStampPlacements() {
+  return getStampPlacementsForRecord({
+    operationManager: state.operationManager,
+    maintenanceManager: state.maintenanceManager,
+    maintenanceBottomByDay: state.maintenanceBottomByDay
+  });
+}
+
+function getStampPlacementsForRecord(recordData = {}) {
   const placements = [];
 
-  if (state.operationManager) {
+  if (recordData.operationManager) {
     placements.push({
-      name: state.operationManager,
+      name: recordData.operationManager,
       size: "large",
       cellRef: "AI2",
       columnOffset: 18000,
@@ -1728,9 +2220,9 @@ function getStampPlacements() {
     });
   }
 
-  if (state.maintenanceManager) {
+  if (recordData.maintenanceManager) {
     placements.push({
-      name: state.maintenanceManager,
+      name: recordData.maintenanceManager,
       size: "large",
       cellRef: "AL2",
       columnOffset: 18000,
@@ -1739,7 +2231,7 @@ function getStampPlacements() {
   }
 
   for (let day = 1; day <= EXCEL_DAY_COLUMNS.length; day += 1) {
-    const stampName = state.maintenanceBottomByDay[String(day)];
+    const stampName = recordData.maintenanceBottomByDay?.[String(day)];
     if (!stampName) {
       continue;
     }
@@ -1808,11 +2300,32 @@ async function applyStampImagesToWorksheet(workbook, worksheetDoc, worksheetPath
   workbook.file(drawingRelationshipsPath, serializeXmlDocument(drawingRelationshipsDoc));
 }
 
-function setWorkbookActiveSheet(workbookDoc, sheetIndex) {
-  const workbookView = workbookDoc.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "workbookView")[0];
-  if (workbookView) {
-    workbookView.setAttribute("activeTab", String(sheetIndex));
+function ensureWorkbookView(workbookDoc) {
+  let bookViews = workbookDoc.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "bookViews")[0];
+  if (!bookViews) {
+    bookViews = workbookDoc.createElementNS(EXCEL_SHEET_NAMESPACE, "bookViews");
+    const workbookRoot = workbookDoc.documentElement;
+    const sheets = workbookDoc.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "sheets")[0];
+    if (sheets) {
+      workbookRoot.insertBefore(bookViews, sheets);
+    } else {
+      workbookRoot.append(bookViews);
+    }
   }
+
+  let workbookView = bookViews.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "workbookView")[0];
+  if (!workbookView) {
+    workbookView = workbookDoc.createElementNS(EXCEL_SHEET_NAMESPACE, "workbookView");
+    bookViews.append(workbookView);
+  }
+
+  return workbookView;
+}
+
+function setWorkbookActiveSheet(workbookDoc, sheetIndex, firstVisibleSheetIndex = 0) {
+  const workbookView = ensureWorkbookView(workbookDoc);
+  workbookView.setAttribute("activeTab", String(Math.max(0, sheetIndex)));
+  workbookView.setAttribute("firstSheet", String(Math.max(0, firstVisibleSheetIndex)));
 }
 
 function setWorksheetSelected(worksheetDoc, isSelected) {
@@ -1922,13 +2435,91 @@ function setWorksheetCellText(worksheetContext, cellRef, value) {
   cell.append(inlineStringEl);
 }
 
+function setWorksheetCellStyle(worksheetContext, cellRef, styleIndex) {
+  const cell = ensureWorksheetCell(
+    worksheetContext.worksheetDoc,
+    worksheetContext.rowsMap,
+    worksheetContext.cellMap,
+    cellRef
+  );
+
+  if (styleIndex == null || styleIndex === "") {
+    cell.removeAttribute("s");
+    return;
+  }
+
+  cell.setAttribute("s", String(styleIndex));
+}
+
+function syncWorksheetMergeCount(mergeCellsRoot) {
+  if (!mergeCellsRoot) {
+    return;
+  }
+  const count = Array.from(mergeCellsRoot.childNodes)
+    .filter((node) => node.nodeType === Node.ELEMENT_NODE && node.localName === "mergeCell")
+    .length;
+  mergeCellsRoot.setAttribute("count", String(count));
+}
+
+function removeWorksheetMergeRange(worksheetDoc, rangeRef) {
+  const mergeCellsRoot = worksheetDoc.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "mergeCells")[0];
+  if (!mergeCellsRoot) {
+    return;
+  }
+
+  Array.from(mergeCellsRoot.childNodes)
+    .filter((node) => node.nodeType === Node.ELEMENT_NODE && node.localName === "mergeCell")
+    .filter((node) => node.getAttribute("ref") === rangeRef)
+    .forEach((node) => node.parentNode?.removeChild(node));
+
+  syncWorksheetMergeCount(mergeCellsRoot);
+}
+
+function normalizeExcelManagerStampLayout(worksheetDoc) {
+  const worksheetContext = buildWorksheetContext(worksheetDoc);
+  const neutralStyleRefs = {
+    1: "AB1",
+    2: "AB2",
+    3: "AB3",
+    4: "AB4"
+  };
+
+  setWorksheetCellText(worksheetContext, "AC1", "運行管理者");
+  setWorksheetCellText(worksheetContext, "AF1", "整備管理者");
+
+  ["AI1:AK1", "AL1:AN1", "AI2:AK4", "AL2:AN4"].forEach((rangeRef) => {
+    removeWorksheetMergeRange(worksheetDoc, rangeRef);
+  });
+
+  for (let row = 1; row <= 4; row += 1) {
+    const styleIndex = worksheetContext.cellMap.get(neutralStyleRefs[row])?.getAttribute("s");
+    ["AI", "AJ", "AK", "AL", "AM", "AN"].forEach((columnLabel) => {
+      const cellRef = `${columnLabel}${row}`;
+      setWorksheetCellText(worksheetContext, cellRef, "");
+      if (styleIndex != null) {
+        setWorksheetCellStyle(worksheetContext, cellRef, styleIndex);
+      }
+    });
+  }
+}
+
 function applyHolidayStylesToWorksheet(worksheetDoc, styleFillVariantMap) {
+  return applyHolidayStylesToWorksheetForRecord(worksheetDoc, styleFillVariantMap, {
+    year: getSelectedYearMonth().year,
+    month: getSelectedYearMonth().month,
+    holidayDays: state.holidayDays
+  });
+}
+
+function applyHolidayStylesToWorksheetForRecord(worksheetDoc, styleFillVariantMap, options = {}) {
   const { cellMap } = buildWorksheetContext(worksheetDoc);
-  const daysInMonth = getDaysInSelectedMonth();
+  const { year, month, holidayDays = [] } = options;
+  const daysInMonth = getDaysInMonth(year, month);
+  const holidaySet = new Set((holidayDays || []).map((day) => Number(day)).filter((day) => day > 0));
 
   for (let day = 1; day <= EXCEL_DAY_COLUMNS.length; day += 1) {
     const columnLabel = EXCEL_DAY_COLUMNS[day - 1];
-    const isCustomHoliday = day <= daysInMonth && isHolidayDay(day);
+    const isCustomHoliday = day <= daysInMonth && holidaySet.has(day);
     const styleKind = day > daysInMonth
       ? "inactive"
       : (isCustomHoliday ? "holiday" : "normal");
@@ -1941,7 +2532,9 @@ function applyHolidayStylesToWorksheet(worksheetDoc, styleFillVariantMap) {
 
       const currentStyleIndex = Number(cell.getAttribute("s"));
       const variants = styleFillVariantMap.get(currentStyleIndex);
-      const nextStyleIndex = variants?.[styleKind];
+      const isBottomStampRow = rowNumber >= EXCEL_BOTTOM_STAMP_ROW
+        && rowNumber < EXCEL_BOTTOM_STAMP_ROW + EXCEL_BOTTOM_STAMP_ROW_SPAN;
+      const nextStyleIndex = variants?.[isBottomStampRow ? "normal" : styleKind];
 
       if (Number.isInteger(nextStyleIndex)) {
         cell.setAttribute("s", String(nextStyleIndex));
@@ -1951,11 +2544,15 @@ function applyHolidayStylesToWorksheet(worksheetDoc, styleFillVariantMap) {
 }
 
 function populateExcelWorksheet(worksheetDoc, options = {}) {
-  const { year, month } = getSelectedYearMonth();
-  const daysInMonth = getDaysInSelectedMonth();
+  const {
+    year = getSelectedYearMonth().year,
+    month = getSelectedYearMonth().month,
+    checks = state.checks,
+    isTemplateLayout = false
+  } = options;
+  const daysInMonth = getDaysInMonth(year, month);
   const driverIdentity = getDriverIdentity();
   const worksheetContext = buildWorksheetContext(worksheetDoc);
-  const { isTemplateLayout = false } = options;
 
   setWorksheetCellText(worksheetContext, "A3", `令和${getReiwaYear(year)}年${month}月`);
 
@@ -1967,6 +2564,8 @@ function populateExcelWorksheet(worksheetDoc, options = {}) {
     setWorksheetCellText(worksheetContext, "P3", driverIdentity.displayValue);
   }
 
+  setWorksheetCellText(worksheetContext, "AC2", "");
+  setWorksheetCellText(worksheetContext, "AF2", "");
   setWorksheetCellText(worksheetContext, "AI2", "");
   setWorksheetCellText(worksheetContext, "AL2", "");
 
@@ -1982,12 +2581,85 @@ function populateExcelWorksheet(worksheetDoc, options = {}) {
 
     for (let itemIndex = 0; itemIndex < CHECK_FIELD_ORDER.length; itemIndex += 1) {
       const rawValue = day <= daysInMonth
-        ? (state.checks[checkKey(itemIndex, day)] || "")
+        ? (checks[checkKey(itemIndex, day)] || "")
         : "";
       const displayValue = rawValue === HOLIDAY_MARK ? "" : rawValue;
       setWorksheetCellText(worksheetContext, `${columnLabel}${EXCEL_CHECK_START_ROW + itemIndex}`, displayValue);
     }
   }
+}
+
+function createEmptyExcelRecordState() {
+  return {
+    checks: {},
+    operationManager: "",
+    maintenanceManager: "",
+    maintenanceBottomByDay: {},
+    holidayDays: []
+  };
+}
+
+function sanitizeBottomStampsByDay(bottomStampsByDay = {}, year, month) {
+  const daysInMonth = getDaysInMonth(year, month);
+  return Object.fromEntries(
+    Object.entries(bottomStampsByDay || {}).filter(([dayText, value]) => {
+      const day = Number(dayText);
+      return day >= 1 && day <= daysInMonth && typeof value === "string" && value.trim();
+    })
+  );
+}
+
+function buildExcelRecordStateFromSource(source = {}, year, month) {
+  const daysInMonth = getDaysInMonth(year, month);
+  const checks = fromFirestoreChecksByDay(source.checksByDay || {}, daysInMonth);
+  const holidayDays = extractHolidayDays(source, checks, daysInMonth)
+    .filter((day) => day >= 1 && day <= daysInMonth);
+
+  return {
+    checks,
+    operationManager: source.operationManager || "",
+    maintenanceManager: source.maintenanceManager || "",
+    maintenanceBottomByDay: sanitizeBottomStampsByDay(source.maintenanceBottomByDay || {}, year, month),
+    holidayDays
+  };
+}
+
+function buildCurrentExcelRecordState(year, month) {
+  syncHolidayChecks();
+  return {
+    checks: { ...state.checks },
+    operationManager: state.operationManager || "",
+    maintenanceManager: state.maintenanceManager || "",
+    maintenanceBottomByDay: sanitizeBottomStampsByDay(state.maintenanceBottomByDay || {}, year, month),
+    holidayDays: mergeHolidayDays(state.holidayDays, state.checks)
+      .filter((day) => day >= 1 && day <= getDaysInMonth(year, month))
+  };
+}
+
+async function buildFiscalYearExcelRecords(vehicle, driver, selectedMonthKey) {
+  const { year, month } = getSelectedYearMonth();
+  const fiscalMonths = buildFiscalYearMonthEntries(year, month);
+  syncCurrentMonthStateToAnnualMap();
+
+  const records = await Promise.all(fiscalMonths.map(async (entry) => {
+    const annualRecord = state.recordsByMonth[entry.monthKey];
+    if (annualRecord) {
+      return {
+        ...entry,
+        recordState: cloneRecordState(annualRecord, entry.monthKey)
+      };
+    }
+
+    const record = await findRecord(entry.monthKey, vehicle, driver);
+    return {
+      ...entry,
+      recordState: record
+        ? buildExcelRecordStateFromSource(record.data, entry.year, entry.month)
+        : createEmptyExcelRecordState()
+    };
+  }));
+
+  return records;
 }
 
 async function downloadExcel() {
@@ -2010,42 +2682,54 @@ async function downloadExcel() {
   const stylesDoc = parseXmlDocument(await workbook.file("xl/styles.xml").async("string"));
   const workbookDoc = parseXmlDocument(await workbook.file("xl/workbook.xml").async("string"));
   const workbookRelsDoc = parseXmlDocument(await workbook.file("xl/_rels/workbook.xml.rels").async("string"));
-  const { month } = getSelectedYearMonth();
-  const targetSheet = resolveExcelSheetTarget(workbookDoc, workbookRelsDoc, month);
-  const templateSheet = getWorkbookSheetTarget(workbookDoc, workbookRelsDoc, EXCEL_TEMPLATE_SHEET_NAME);
-  const inspectionSheets = getInspectionSheetTargets(workbookDoc, workbookRelsDoc);
+  const selectedMonthKey = state.activeMonthKey || formatMonthKey(getSelectedFiscalYearStart(), 4);
+  const annualSheetTargets = await createAnnualExcelSheetTargets(workbook, workbookDoc, workbookRelsDoc, contentTypesDoc);
+  const targetSheet = annualSheetTargets.find((sheetTarget) => sheetTarget.monthKey === selectedMonthKey) || annualSheetTargets[0];
+  const targetSheetIndex = annualSheetTargets.findIndex((sheetTarget) => sheetTarget.path === targetSheet?.path);
   const styleFillVariantMap = buildStyleFillVariantMap(stylesDoc);
-  const stampPlacements = getStampPlacements();
   const stampMediaStore = await createExcelStampMediaStore(workbook, contentTypesDoc);
+  const fiscalYearRecords = await buildFiscalYearExcelRecords(vehicle, driverIdentity.storageValue, selectedMonthKey);
 
   if (!targetSheet) {
     throw new Error("Excelテンプレート内の出力先シートが見つかりません");
   }
 
-  if (!EXCEL_MONTH_SHEET_NAMES[month]) {
-    targetSheet.sheet.setAttribute("name", `日常点検記録表${month}月`);
-  }
-
-  for (const sheetTarget of inspectionSheets) {
+  for (const sheetTarget of annualSheetTargets) {
+    const sheetRecord = fiscalYearRecords.find((entry) => entry.sheetName === sheetTarget.sheet.getAttribute("name"));
     const worksheetFile = workbook.file(sheetTarget.path);
     if (!worksheetFile) {
       throw new Error(`Excelテンプレートのワークシートを開けません: ${sheetTarget.path}`);
     }
 
     const worksheetDoc = parseXmlDocument(await worksheetFile.async("string"));
+    const recordState = sheetRecord?.recordState || createEmptyExcelRecordState();
     populateExcelWorksheet(worksheetDoc, {
-      isTemplateLayout: sheetTarget.path === templateSheet?.path
+      year: sheetRecord?.year || getSelectedYearMonth().year,
+      month: sheetRecord?.month || getSelectedYearMonth().month,
+      checks: recordState.checks,
+      isTemplateLayout: false
     });
-    applyHolidayStylesToWorksheet(worksheetDoc, styleFillVariantMap);
-    await applyStampImagesToWorksheet(workbook, worksheetDoc, sheetTarget.path, stampPlacements, stampMediaStore);
-    setWorksheetSelected(worksheetDoc, sheetTarget.path === targetSheet.path);
+    applyHolidayStylesToWorksheetForRecord(worksheetDoc, styleFillVariantMap, {
+      year: sheetRecord?.year || getSelectedYearMonth().year,
+      month: sheetRecord?.month || getSelectedYearMonth().month,
+      holidayDays: recordState.holidayDays
+    });
+    await applyStampImagesToWorksheet(
+      workbook,
+      worksheetDoc,
+      sheetTarget.path,
+      getStampPlacementsForRecord(recordState),
+      stampMediaStore
+    );
+    setWorksheetSelected(worksheetDoc, sheetTarget.path === annualSheetTargets[0]?.path);
     workbook.file(sheetTarget.path, serializeXmlDocument(worksheetDoc));
   }
 
   workbook.file("[Content_Types].xml", serializeXmlDocument(contentTypesDoc));
   workbook.file("xl/styles.xml", serializeXmlDocument(stylesDoc));
-  setWorkbookActiveSheet(workbookDoc, targetSheet.index);
+  setWorkbookActiveSheet(workbookDoc, 0, 0);
   workbook.file("xl/workbook.xml", serializeXmlDocument(workbookDoc));
+  workbook.file("xl/_rels/workbook.xml.rels", serializeXmlDocument(workbookRelsDoc));
 
   const excelBlob = await workbook.generateAsync({
     type: "blob",
@@ -2063,7 +2747,7 @@ function buildCsvRows() {
 
   const rows = [
     CSV_HEADER,
-    ["meta", "month", "", monthEl.value],
+    ["meta", "month", "", state.activeMonthKey || formatMonthKey(getSelectedFiscalYearStart(), 4)],
     ["meta", "vehicle", "", vehicleEl.value.trim()],
     ["meta", "driver", "", driverIdentity.storageValue],
     ["meta", "driverDisplay", "", driverIdentity.displayValue],
@@ -2113,7 +2797,7 @@ function buildCsvRows() {
 function downloadCsv() {
   const csvText = serializeCsv(buildCsvRows());
   const blob = new Blob(["\uFEFF", csvText], { type: "text/csv;charset=utf-8;" });
-  const month = monthEl.value || "month";
+  const month = state.activeMonthKey || `${getSelectedFiscalYearStart()}年度`;
   const vehicle = sanitizeFileNamePart(vehicleEl.value, "vehicle");
   const driver = sanitizeFileNamePart(stripDriverReading(driverEl.value), "driver");
 
@@ -2134,7 +2818,7 @@ function parseImportedCsv(rows) {
   }
 
   const imported = {
-    month: monthEl.value,
+    month: state.activeMonthKey || formatMonthKey(getSelectedFiscalYearStart(), 4),
     vehicle: vehicleEl.value.trim(),
     driver: getDriverIdentity().storageValue,
     checks: {},
@@ -2204,11 +2888,12 @@ function parseImportedCsv(rows) {
 }
 
 function applyImportedRecord(imported) {
-  resetRecordState();
-
   if (/^\d{4}-\d{2}$/.test(imported.month)) {
-    monthEl.value = imported.month;
+    setMonthInputValue(imported.month);
+    state.activeMonthKey = imported.month;
   }
+
+  resetAnnualRecordState(state.activeMonthKey || formatMonthKey(getSelectedFiscalYearStart(), 4));
 
   rememberDriverStorageValue(imported.driver);
   ensureSelectValue(vehicleEl, imported.vehicle, normalizeVehicleValue);
@@ -2243,7 +2928,9 @@ function applyImportedRecord(imported) {
 
   syncHolidayChecks();
   syncMaintenanceRecordsByDay();
+  syncCurrentMonthStateToAnnualMap();
   syncHeaderInfo();
+  renderMonthTabs();
   renderDays();
   renderBody();
   renderBottomStampRow();
@@ -2305,19 +2992,156 @@ function toFirestoreChecksByDay(checks) {
   return checksByDay;
 }
 
-function fromFirestoreChecksByDay(checksByDay = {}) {
+function fromFirestoreChecksByDay(checksByDay = {}, daysInMonth = Number.POSITIVE_INFINITY) {
   const checks = {};
   Object.entries(checksByDay).forEach(([dayText, valuesByField]) => {
     const day = Number(dayText);
-    if (!day || typeof valuesByField !== "object" || valuesByField === null) return;
+    if (!day || day > daysInMonth || typeof valuesByField !== "object" || valuesByField === null) return;
     CHECK_FIELD_ORDER.forEach((fieldKey, rowIndex) => {
-      const value = valuesByField[fieldKey];
-      if (typeof value === "string" && value) {
-        checks[checkKey(rowIndex, day)] = value;
+      const rawValue = valuesByField[fieldKey];
+      const normalizedValue = rawValue === "×" ? "☓" : rawValue;
+      if (typeof normalizedValue === "string" && normalizedValue && normalizedValue !== HOLIDAY_MARK && CHECK_STATES.includes(normalizedValue)) {
+        checks[checkKey(rowIndex, day)] = normalizedValue;
       }
     });
   });
   return checks;
+}
+
+function toEpochMillis(value) {
+  if (!value) {
+    return 0;
+  }
+  if (typeof value.toMillis === "function") {
+    return value.toMillis();
+  }
+  if (typeof value.seconds === "number") {
+    return (value.seconds * 1000) + Math.floor((value.nanoseconds || 0) / 1_000_000);
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function shouldReplaceLoadedRecord(existingRecord, nextRecord) {
+  const existingUpdatedAt = toEpochMillis(existingRecord?.data?.updatedAt);
+  const nextUpdatedAt = toEpochMillis(nextRecord?.data?.updatedAt);
+  if (nextUpdatedAt !== existingUpdatedAt) {
+    return nextUpdatedAt > existingUpdatedAt;
+  }
+
+  const existingDocId = String(existingRecord?.id || "");
+  const nextDocId = String(nextRecord?.id || "");
+  return nextDocId.localeCompare(existingDocId) > 0;
+}
+
+function buildFirestoreRecordState(monthKey, record) {
+  if (!record) {
+    return createEmptyMonthRecordState(monthKey);
+  }
+
+  const { year, month } = parseYearMonthKey(monthKey);
+  const daysInMonth = getDaysInMonth(year, month);
+  const checks = fromFirestoreChecksByDay(record.data.checksByDay, daysInMonth);
+  return cloneRecordState({
+    month: monthKey,
+    checks,
+    operationManager: record.data.operationManager || "",
+    maintenanceManager: record.data.maintenanceManager || "",
+    maintenanceBottomByDay: sanitizeBottomStampsByDay(record.data.maintenanceBottomByDay || {}, year, month),
+    maintenanceRecordsByDay: getMaintenanceRecordsByDayFromSource(record.data),
+    holidayDays: extractHolidayDays(record.data, checks, daysInMonth),
+    loadedDocId: record.id
+  }, monthKey);
+}
+
+async function deleteMonthRecord(docId) {
+  if (!docId) {
+    return;
+  }
+  await ensureAppAuth();
+  await deleteDoc(doc(db, FIRESTORE_COLLECTION, docId));
+}
+
+async function listRecordsForVehicleAndDriver(vehicle, driver) {
+  await ensureAppAuth();
+  const recordsRef = collection(db, FIRESTORE_COLLECTION);
+  const rawVehicle = normalizeOptionValue(vehicle);
+  const normalizedVehicle = normalizeVehicleValue(vehicle);
+  const queries = [
+    query(recordsRef, where("vehicleNormalized", "==", normalizedVehicle)),
+    query(recordsRef, where("vehicle", "==", normalizedVehicle), limit(200)),
+    query(recordsRef, where("vehicle", "==", rawVehicle), limit(200))
+  ];
+  const snapshots = await Promise.all(queries.map((currentQuery) => getDocs(currentQuery)));
+  const targetDriverKey = normalizeDriverLookupKey(driver);
+  const seenDocIds = new Set();
+  const records = [];
+
+  snapshots.forEach((snapshot) => {
+    snapshot.docs.forEach((recordDoc) => {
+      if (seenDocIds.has(recordDoc.id)) {
+        return;
+      }
+      seenDocIds.add(recordDoc.id);
+      const recordData = recordDoc.data();
+      const candidateValues = [
+        recordData.driver,
+        recordData.driverRaw,
+        recordData.driverDisplay,
+        ...(Array.isArray(recordData.driverAliases) ? recordData.driverAliases : [])
+      ];
+      const matchesDriver = candidateValues.some((candidate) => normalizeDriverLookupKey(candidate || "") === targetDriverKey);
+      if (!matchesVehicleRecord(recordData, normalizedVehicle) || !matchesDriver) {
+        return;
+      }
+      records.push({
+        id: recordDoc.id,
+        data: recordData
+      });
+    });
+  });
+
+  return records;
+}
+
+async function loadFiscalYearRecordStates(vehicle, driver, monthKey) {
+  const { year, month } = parseYearMonthKey(monthKey);
+  const fiscalEntries = buildFiscalYearMonthEntries(year, month);
+  const fiscalMonthKeys = new Set(fiscalEntries.map((entry) => entry.monthKey));
+  const records = await listRecordsForVehicleAndDriver(vehicle, driver);
+  const latestByMonth = {};
+  const matchedRecordsByMonth = {};
+
+  records.forEach((record) => {
+    const recordMonth = String(record.data.month || "");
+    if (!fiscalMonthKeys.has(recordMonth)) {
+      return;
+    }
+    if (!matchedRecordsByMonth[recordMonth]) {
+      matchedRecordsByMonth[recordMonth] = [];
+    }
+    matchedRecordsByMonth[recordMonth].push(record);
+    if (!latestByMonth[recordMonth] || shouldReplaceLoadedRecord(latestByMonth[recordMonth], record)) {
+      latestByMonth[recordMonth] = record;
+    }
+  });
+
+  Object.entries(matchedRecordsByMonth).forEach(([recordMonth, monthRecords]) => {
+    if (monthRecords.length <= 1) {
+      return;
+    }
+    console.warn("Duplicate monthly inspection records detected:", {
+      month: recordMonth,
+      vehicle,
+      driver,
+      docIds: monthRecords.map((record) => record.id),
+      updatedAt: monthRecords.map((record) => toEpochMillis(record.data?.updatedAt))
+    });
+  });
+
+  return Object.fromEntries(
+    fiscalEntries.map((entry) => [entry.monthKey, buildFirestoreRecordState(entry.monthKey, latestByMonth[entry.monthKey])])
+  );
 }
 
 async function findRecord(month, vehicle, driver) {
@@ -2374,7 +3198,7 @@ async function findRecord(month, vehicle, driver) {
 }
 
 async function loadRecord() {
-  const month = monthEl.value;
+  const month = state.activeMonthKey || formatMonthKey(getSelectedFiscalYearStart(), 4);
   const vehicle = normalizeVehicleValue(vehicleEl.value);
   const driver = getDriverIdentity().storageValue;
   if (!vehicle || !driver) {
@@ -2382,36 +3206,59 @@ async function loadRecord() {
     return;
   }
 
-  const record = await findRecord(month, vehicle, driver);
-  if (!record) {
-    resetRecordState();
-    setStamp("operationManager", "");
-    setStamp("maintenanceManager", "");
-    renderDays();
-    renderBody();
-    renderBottomStampRow();
-    setStatus("Firestore に一致データがないため新規入力モードです。");
-    return;
-  }
+  const loadedRecordsByMonth = await loadFiscalYearRecordStates(vehicle, driver, month);
+  state.recordsByMonth = loadedRecordsByMonth;
+  const hasAnyLoadedMonth = Object.values(loadedRecordsByMonth).some((recordState) => monthRecordHasContent(recordState));
+  const initialMonth = monthRecordHasContent(loadedRecordsByMonth[month])
+    ? month
+    : (Object.keys(loadedRecordsByMonth).find((monthKey) => monthRecordHasContent(loadedRecordsByMonth[monthKey])) || month);
 
-  state.loadedDocId = record.id;
-  state.checks = fromFirestoreChecksByDay(record.data.checksByDay);
-  rememberDriverStorageValue(record.data.driver || "");
-  setStamp("operationManager", record.data.operationManager || "");
-  setStamp("maintenanceManager", record.data.maintenanceManager || "");
-  state.maintenanceBottomByDay = record.data.maintenanceBottomByDay || {};
-  state.maintenanceRecordsByDay = getMaintenanceRecordsByDayFromSource(record.data);
-  state.holidayDays = extractHolidayDays(record.data, state.checks);
-  syncHolidayChecks();
-  syncMaintenanceRecordsByDay();
-  renderDays();
-  renderBody();
-  renderBottomStampRow();
-  setStatus("読込完了");
+  rememberDriverStorageValue(driver);
+  switchActiveMonth(initialMonth, { preserveCurrent: false });
+  setStatus(hasAnyLoadedMonth ? "年度読込完了" : "年度内に一致データがないため新規入力モードです。");
+}
+
+async function saveMonthRecord(monthKey, vehicle, driverIdentity, recordState) {
+  const driver = driverIdentity.storageValue;
+  const normalizedVehicle = normalizeVehicleValue(vehicle);
+  const monthState = cloneRecordState(recordState, monthKey);
+  const { year, month } = parseYearMonthKey(monthKey);
+  const holidayPayload = buildHolidayPayload(monthState.holidayDays, monthState.checks, getDaysInMonth(year, month));
+  const rawDocId = buildRecordKey(monthKey, normalizedVehicle, driverIdentity.storageValue);
+  const basePayload = {
+    month: monthKey,
+    vehicle: normalizedVehicle,
+    vehicleRaw: normalizedVehicle,
+    vehicleDisplay: normalizedVehicle,
+    vehicleAliases: [normalizedVehicle].filter(Boolean),
+    vehicleNormalized: normalizeVehicleValue(normalizedVehicle),
+    driver,
+    driverRaw: driverIdentity.storageValue,
+    driverDisplay: driverIdentity.displayValue,
+    driverAliases: driverIdentity.aliases,
+    driverNormalized: driverIdentity.normalizedKey,
+    checksByDay: toFirestoreChecksByDay(monthState.checks),
+    operationManager: monthState.operationManager,
+    maintenanceManager: monthState.maintenanceManager,
+    maintenanceBottomByDay: monthState.maintenanceBottomByDay,
+    maintenanceRecordsByDay: sanitizeMaintenanceRecordsByDay(monthState.maintenanceRecordsByDay),
+    maintenanceNotesByDay: sanitizeMaintenanceRecordsByDay(monthState.maintenanceRecordsByDay),
+    ...holidayPayload,
+    updatedAt: serverTimestamp()
+  };
+
+  const existingRecord = monthState.loadedDocId
+    ? { id: monthState.loadedDocId }
+    : await findRecord(monthKey, normalizedVehicle, driver);
+  const targetDocId = existingRecord?.id || rawDocId;
+  await ensureAppAuth();
+  await setDoc(doc(db, FIRESTORE_COLLECTION, targetDocId), basePayload);
+  return targetDocId;
 }
 
 async function saveRecord() {
-  const month = monthEl.value;
+  syncCurrentMonthStateToAnnualMap();
+  const fiscalEntries = getCurrentFiscalEntries();
   const vehicle = normalizeVehicleValue(vehicleEl.value);
   const driverIdentity = getDriverIdentity();
   const driver = driverIdentity.storageValue;
@@ -2420,62 +3267,77 @@ async function saveRecord() {
     return;
   }
 
-  const saveLocationMessage = getSaveLocationMessage(month, vehicle, driver);
-  const accepted = window.confirm(`保存先を確認してください。\n\n${saveLocationMessage}\n\nこの場所に保存しますか？`);
+  const saveLocationMessage = `保存先: Firestore / ${FIRESTORE_COLLECTION}\n対象年度: ${fiscalEntries[0]?.monthKey} 〜 ${fiscalEntries[fiscalEntries.length - 1]?.monthKey}\n一致キー: ${vehicle} / ${driver}`;
+  const accepted = window.confirm(`保存先を確認してください。\n\n${saveLocationMessage}\n\nこの年度の編集内容を保存しますか？`);
   if (!accepted) {
     setStatus("保存をキャンセルしました");
     return;
   }
 
-  const existingRecord = await findRecord(month, vehicle, driver);
-  syncHolidayChecks();
-  syncMaintenanceRecordsByDay();
-  const holidayPayload = buildHolidayPayload(state.holidayDays, state.checks);
-  const rawDocId = buildRecordKey(month, vehicle, driverIdentity.storageValue);
-  const basePayload = {
-    month,
-    vehicle,
-    vehicleRaw: vehicle,
-    vehicleDisplay: vehicle,
-    vehicleAliases: [vehicle].filter(Boolean),
-    vehicleNormalized: normalizeVehicleValue(vehicle),
-    driver,
-    driverRaw: driverIdentity.storageValue,
-    driverDisplay: driverIdentity.displayValue,
-    driverAliases: driverIdentity.aliases,
-    driverNormalized: driverIdentity.normalizedKey,
-    checksByDay: toFirestoreChecksByDay(state.checks),
-    operationManager: state.operationManager,
-    maintenanceManager: state.maintenanceManager,
-    maintenanceBottomByDay: state.maintenanceBottomByDay,
-    maintenanceRecordsByDay: sanitizeMaintenanceRecordsByDay(state.maintenanceRecordsByDay),
-    maintenanceNotesByDay: sanitizeMaintenanceRecordsByDay(state.maintenanceRecordsByDay),
-    ...holidayPayload,
-    updatedAt: serverTimestamp()
-  };
+  let savedCount = 0;
+  let deletedCount = 0;
+  for (const entry of fiscalEntries) {
+    const monthState = state.recordsByMonth[entry.monthKey] || createEmptyMonthRecordState(entry.monthKey);
+    if (!monthRecordHasContent(monthState)) {
+      if (monthState.loadedDocId) {
+        await deleteMonthRecord(monthState.loadedDocId);
+        state.recordsByMonth[entry.monthKey] = createEmptyMonthRecordState(entry.monthKey);
+        deletedCount += 1;
+      }
+      continue;
+    }
+    const savedDocId = await saveMonthRecord(entry.monthKey, vehicle, driverIdentity, monthState);
+    state.recordsByMonth[entry.monthKey] = {
+      ...cloneRecordState(monthState, entry.monthKey),
+      loadedDocId: savedDocId
+    };
+    savedCount += 1;
+  }
 
-  const targetDocId = existingRecord?.id || state.loadedDocId || rawDocId;
-  await ensureAppAuth();
-  await setDoc(doc(db, FIRESTORE_COLLECTION, targetDocId), basePayload);
-  state.loadedDocId = targetDocId;
-  setStatus("保存完了");
+  applyMonthRecordState(state.activeMonthKey, getRecordStateForMonth(state.activeMonthKey));
+  setStatus(
+    savedCount || deletedCount
+      ? `年度保存完了 (保存 ${savedCount}か月 / 削除 ${deletedCount}か月)`
+      : "保存対象の月がありません"
+  );
 }
 
 monthEl.addEventListener("change", () => {
-  clearLoadedDocId();
+  if (state.suppressMonthInputSync) {
+    return;
+  }
+
+  const nextMonthKey = formatMonthKey(getSelectedFiscalYearStart(), 4);
+  resetAnnualRecordState(nextMonthKey);
   syncHeaderInfo();
+  renderMonthTabs();
   renderDays();
   renderBody();
   renderBottomStampRow();
+  setStamp("operationManager", "");
+  setStamp("maintenanceManager", "");
   syncToolbarWidth();
+  setStatus("対象年度を切り替えました。必要に応じて読込してください。");
 });
 vehicleEl.addEventListener("change", () => {
-  clearLoadedDocId();
+  resetAnnualRecordState(formatMonthKey(getSelectedFiscalYearStart(), 4));
   syncHeaderInfo();
+  renderMonthTabs();
+  renderDays();
+  renderBody();
+  renderBottomStampRow();
+  setStamp("operationManager", "");
+  setStamp("maintenanceManager", "");
 });
 driverEl.addEventListener("change", () => {
-  clearLoadedDocId();
+  resetAnnualRecordState(formatMonthKey(getSelectedFiscalYearStart(), 4));
   syncHeaderInfo();
+  renderMonthTabs();
+  renderDays();
+  renderBody();
+  renderBottomStampRow();
+  setStamp("operationManager", "");
+  setStamp("maintenanceManager", "");
 });
 window.addEventListener("resize", syncToolbarWidth);
 
@@ -2555,7 +3417,9 @@ maintenanceNoteInputEl.addEventListener("keydown", (event) => {
   }
 });
 
+resetAnnualRecordState(formatMonthKey(getSelectedFiscalYearStart(), 4));
 syncHeaderInfo();
+renderMonthTabs();
 renderDays();
 renderBody();
 renderBottomStampRow();

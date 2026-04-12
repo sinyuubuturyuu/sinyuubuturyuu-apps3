@@ -7,13 +7,12 @@
 
 const MONTHLY_COMPLETE_IMAGE_SRC = "./getujitiretenkenhyou/icons/monthly-complete.png";
 const REFERENCE_FIREBASE_CONFIG = Object.freeze(window.APP_FIREBASE_DIRECTORY_CONFIG || {
-  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
-  authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
-  projectId: "sinyuubuturyuu-86aeb",
-  storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
-  messagingSenderId: "213947378677",
-  appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
-  measurementId: "G-F9VYGCTHEV",
+  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
+  authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
+  projectId: "sinyuubuturyuu-dev",
+  storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
+  messagingSenderId: "997788842966",
+  appId: "1:997788842966:web:e011e7340e2af863c40277",
 });
 const REFERENCE_SOURCE_KIND = Object.freeze({
   VEHICLES: "vehicles",
@@ -39,13 +38,12 @@ const MONTHLY_COMPLETE_IMAGE_ALT = "Monthly inspection complete.";
 const DAILY_INSPECTION_COMPLETE_IMAGE_SRC = "./getujinitijyoutenkenhyou/icons/monthly-complete.png";
 const DAILY_INSPECTION_COMPLETE_IMAGE_ALT = "Daily inspection complete for this month.";
 const DAILY_INSPECTION_FIREBASE_CONFIG = Object.freeze({
-  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
-  authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
-  projectId: "sinyuubuturyuu-86aeb",
-  storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
-  messagingSenderId: "213947378677",
-  appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
-  measurementId: "G-F9VYGCTHEV",
+  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
+  authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
+  projectId: "sinyuubuturyuu-dev",
+  storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
+  messagingSenderId: "997788842966",
+  appId: "1:997788842966:web:e011e7340e2af863c40277",
 });
 const DAILY_INSPECTION_APP_SETTINGS = Object.freeze({
   collectionName: "getujinitijyoutenkenhyou",
@@ -113,8 +111,26 @@ const elements = {
   authUserEmail: document.getElementById("authUserEmail"),
   logoutButton: document.getElementById("logoutButton"),
 };
+
+function readSharedState() {
+  if (!sharedSettings) {
+    return null;
+  }
+  if (typeof sharedSettings.readState === "function") {
+    return sharedSettings.readState();
+  }
+  if (typeof sharedSettings.ensureState === "function") {
+    return sharedSettings.ensureState();
+  }
+  return null;
+}
+
+function waitFor(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
 const state = {
-  shared: sharedSettings.ensureState(),
+  shared: readSharedState(),
   cloudReady: false,
   referenceOptions: {
     vehicles: [],
@@ -139,7 +155,7 @@ registerServiceWorker();
 void initializeAuth();
 
 function refreshSharedState() {
-  state.shared = sharedSettings.ensureState();
+  state.shared = readSharedState();
 }
 
 function renderAll() {
@@ -324,14 +340,16 @@ async function requireSignedInUser() {
 async function applyLoginAssignmentForUser(user, options = {}) {
   const loginId = sharedSettings.normalizeLoginId(user && user.email);
   if (!loginId) {
-    return sharedSettings.ensureState();
+    return readSharedState();
   }
 
   if (options.refresh !== false || !state.referenceOptions.loaded) {
     await refreshReferenceOptions();
   }
 
-  const nextState = sharedSettings.applyLoginAssignment(loginId);
+  const nextState = sharedSettings.applyLoginAssignment(loginId, {
+    preserveVehicleSelection: true
+  });
   state.referenceOptions.vehicles = nextState.vehicles;
   state.referenceOptions.vehicleProfiles = nextState.vehicleProfiles;
   state.referenceOptions.userProfiles = nextState.userProfiles;
@@ -344,6 +362,26 @@ async function applyLoginAssignmentForUser(user, options = {}) {
   }
 
   return nextState;
+}
+
+async function stabilizeLauncherSelection(user, options = {}) {
+  const attemptCount = options.attemptCount || 4;
+  const waitMs = options.waitMs || 250;
+
+  for (let attempt = 0; attempt < attemptCount; attempt += 1) {
+    const nextState = await applyLoginAssignmentForUser(user, {
+      refresh: attempt === 0 || options.refresh !== false
+    });
+    state.shared = nextState || readSharedState();
+    if (hasMonthlySelectionTarget()) {
+      return state.shared;
+    }
+    if (attempt < attemptCount - 1) {
+      await waitFor(waitMs);
+    }
+  }
+
+  return state.shared;
 }
 
 function renderLauncherButtons() {
@@ -681,7 +719,7 @@ async function refreshReferenceOptions() {
 
   try {
     const referenceOptions = await loadReferenceOptionsFromFirebase();
-    const currentState = sharedSettings.ensureState();
+    const currentState = readSharedState();
     const nextVehicleProfiles = referenceOptions.vehicleProfiles.length ? referenceOptions.vehicleProfiles : currentState.vehicleProfiles;
     const nextUserProfiles = referenceOptions.userProfiles.length ? referenceOptions.userProfiles : currentState.userProfiles;
     const nextState = sharedSettings.saveReferenceProfiles({
@@ -698,7 +736,7 @@ async function refreshReferenceOptions() {
     };
     renderSettings();
   } catch (error) {
-    const currentState = sharedSettings.ensureState();
+    const currentState = readSharedState();
     state.referenceOptions.loading = false;
     state.referenceOptions.vehicles = currentState.vehicles;
     state.referenceOptions.vehicleProfiles = currentState.vehicleProfiles;
@@ -1371,7 +1409,8 @@ async function openDailyInspectionApp() {
   elements.app2Button.disabled = true;
 
   try {
-    await requireSignedInUser();
+    const user = await requireSignedInUser();
+    await stabilizeLauncherSelection(user, { refresh: true });
     if (await shouldShowDailyInspectionCompleteImage()) {
       await showSendFarewell({
         src: DAILY_INSPECTION_COMPLETE_IMAGE_SRC,

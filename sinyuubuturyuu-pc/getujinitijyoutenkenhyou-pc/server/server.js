@@ -24,6 +24,7 @@ const contentTypes = {
   ".js": "application/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
   ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 };
 

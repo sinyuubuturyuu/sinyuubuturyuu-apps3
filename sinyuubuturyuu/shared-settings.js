@@ -529,11 +529,19 @@
     return ensureState();
   }
 
-  function applyLoginAssignment(loginId) {
+  function applyLoginAssignment(loginId, options = {}) {
     const state = ensureState();
     const normalizedLoginId = normalizeLoginId(loginId);
     const userProfile = getUserProfileByLoginId(normalizedLoginId, state);
-    const vehicleNumber = userProfile ? userProfile.vehicleNumber : "";
+    const shouldPreserveVehicleSelection = options.preserveVehicleSelection !== false;
+    const currentVehicleNumber = normalizeVehicleNumber(state.current && state.current.vehicleNumber);
+    const canReuseCurrentVehicle = shouldPreserveVehicleSelection
+      && state.current && state.current.loginId === normalizedLoginId
+      && currentVehicleNumber
+      && state.vehicles.includes(currentVehicleNumber);
+    const vehicleNumber = canReuseCurrentVehicle
+      ? currentVehicleNumber
+      : (userProfile ? userProfile.vehicleNumber : "");
     writeCurrent(state, {
       loginId: normalizedLoginId,
       driverName: userProfile ? userProfile.driverName : "",

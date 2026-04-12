@@ -103,6 +103,45 @@ button {
   overflow: auto;
   min-height: calc(100vh - 160px);
 }
+.month-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px 0;
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(248, 251, 255, 0.92));
+  border-bottom: 1px solid #d4dee7;
+}
+.month-tab-button {
+  min-width: 72px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid #b6c5d1;
+  border-radius: 10px 10px 0 0;
+  background: #f1f5f8;
+  color: #28404f;
+  font-weight: 700;
+}
+.month-tab-button:hover {
+  background: #e7f0f6;
+}
+.month-tab-button.is-active {
+  background: #fff;
+  color: var(--accent);
+  border-color: #8fb0c3;
+  border-bottom-color: #fff;
+}
+.month-tab-button.is-loaded::after {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 8px;
+  border-radius: 999px;
+  background: #2f855a;
+  vertical-align: middle;
+}
 .maintenance-note-modal-backdrop {
   position: fixed;
   inset: 0;

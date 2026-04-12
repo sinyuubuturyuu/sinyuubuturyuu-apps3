@@ -7,7 +7,7 @@
   <script>
     (function () {
       const versionSync = window.SinyuubuturyuuPcVersion || null;
-      const version = versionSync ? versionSync.ensureLatestVersion("20260409a") : "20260409a";
+      const version = versionSync ? versionSync.ensureLatestVersion("20260412e") : "20260412e";
       if (!version) return;
       window.__SINYUUBUTURYUU_PC_VERSION__ = version;
     })();
@@ -15,7 +15,7 @@
   <title>シンユウ物流パソコン用</title>
   <link rel="icon" type="image/png" href="../../icons/icon-sinyuubuturyuu-pc.png" />
   <link rel="apple-touch-icon" href="../../icons/icon-sinyuubuturyuu-pc.png" />
-  <link rel="stylesheet" href="./styles.css?v=20260409a" />
+  <link rel="stylesheet" href="./styles.css?v=20260412e" />
 </head>
 <body>
   <header class="app-header">
@@ -23,7 +23,15 @@
       <a class="back-button" href="../../index.html">トップへ戻る</a>
     </div>
     <div id="toolbar" class="toolbar">
-      <label>対象月<input type="month" id="month" value="2026-01" /></label>
+      <label>対象年度
+        <select id="month" aria-label="対象年度">
+          <option value="2024">2024年度</option>
+          <option value="2025">2025年度</option>
+          <option value="2026" selected>2026年度</option>
+          <option value="2027">2027年度</option>
+          <option value="2028">2028年度</option>
+        </select>
+      </label>
       <label>車番
         <select id="vehicle" disabled>
           <option value="">候補を読込中...</option>
@@ -48,21 +56,22 @@
 
   <main class="sheet-wrap">
     <section class="sheet" aria-label="月次日常点検記録表">
+      <div id="monthTabs" class="month-tabs" aria-label="年度の対象月タブ"></div>
       <table id="inspectionTable">
         <thead>
           <tr>
             <th id="companyHead" colspan="8" class="company">有限会社シンユウ物流</th>
             <th id="titleHead" colspan="24" class="title">月 次 点 検 記 録 表</th>
-            <th id="operationHead" colspan="4" class="manager-title">運行管理者</th>
-            <th id="maintenanceHead" colspan="4" class="manager-title">整備管理者</th>
+            <th id="operationHead" colspan="3" class="manager-title">運行管理者</th>
+            <th id="maintenanceHead" colspan="3" class="manager-title">整備管理者</th>
             <th id="maintenanceRecordHead" rowspan="4" class="maintenance-record-head">整備記録</th>
           </tr>
           <tr>
             <th id="monthHead" colspan="4" class="month-cell">令和8年 <span id="monthText">1</span>月</th>
             <th id="vehicleHead" colspan="4" class="vehicle-cell">車番: <span id="vehicleText">-</span></th>
             <th id="driverHead" colspan="24" class="driver-cell">運転者名（点検者）: <span id="driverText">-</span></th>
-            <th id="operationManagerSlot" colspan="4" class="stamp-slot"></th>
-            <th id="maintenanceManagerSlot" colspan="4" class="stamp-slot"></th>
+            <th id="operationManagerSlot" colspan="3" class="stamp-slot"></th>
+            <th id="maintenanceManagerSlot" colspan="3" class="stamp-slot"></th>
           </tr>
           <tr id="datesRow">
             <th colspan="4" rowspan="2">点検個所</th>
@@ -105,7 +114,7 @@
     </section>
   </div>
 
-  <script src="../../launcher-window.js?v=20260409a"></script>
+  <script src="../../launcher-window.js?v=20260412e"></script>
   <script>
     (function () {
       if (window.launcherWindow) {
@@ -116,11 +125,11 @@
   </script>
   <script src="../../getujitiretenkenhyou-pc/firebase/firebase-config.js?v=20260404b"></script>
   <script src="../../auth/firebase-auth.js?v=20260404b"></script>
-  <script src="../../shared-settings.js?v=20260409a"></script>
+  <script src="../../shared-settings.js?v=20260412e"></script>
   <script>
     (function () {
       const version = window.__SINYUUBUTURYUU_PC_VERSION__
-        || (window.SinyuubuturyuuPcVersion ? window.SinyuubuturyuuPcVersion.getVersion("20260404b") : "20260404b");
+        || (window.SinyuubuturyuuPcVersion ? window.SinyuubuturyuuPcVersion.getVersion("20260412e") : "20260412e");
       const launcherUrl = new URL("../../index.html", window.location.href);
       launcherUrl.searchParams.set("returnTo", window.location.href);
 

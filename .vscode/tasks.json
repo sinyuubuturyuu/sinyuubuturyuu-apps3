@@ -11,7 +11,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        "Remove-Item Env:NODE_OPTIONS -ErrorAction SilentlyContinue; Remove-Item Env:VSCODE_INSPECTOR_OPTIONS -ErrorAction SilentlyContinue; & node .\\dev-launcher-server.cjs"
+        "Remove-Item Env:NODE_OPTIONS -ErrorAction SilentlyContinue; Remove-Item Env:VSCODE_INSPECTOR_OPTIONS -ErrorAction SilentlyContinue; & node .\\launcher\\launcher-server.cjs 8081"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -36,3 +36,5 @@
     }
   ]
 }
+
+
