@@ -38,6 +38,7 @@ const REFERENCE_SOURCE_CONFIG = Object.freeze({
 const MONTHLY_COMPLETE_IMAGE_ALT = "Monthly inspection complete.";
 const DAILY_INSPECTION_COMPLETE_IMAGE_SRC = "./getujinitijyoutenkenhyou/icons/monthly-complete.png";
 const DAILY_INSPECTION_COMPLETE_IMAGE_ALT = "Daily inspection complete for this month.";
+const LAUNCH_RETRY_MESSAGE = "通信状態を確認して、もう一度タップしてください。";
 const DAILY_INSPECTION_FIREBASE_CONFIG = Object.freeze({
   apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
   authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
@@ -100,6 +101,7 @@ const elements = {
   truckTypeAutoDisplay: document.getElementById("truckTypeAutoDisplay"),
   truckTypeList: document.getElementById("truckTypeList"),
   settingsStatus: document.getElementById("settingsStatus"),
+  launchStatus: document.getElementById("launchStatus"),
   sendFarewell: document.getElementById("sendFarewell"),
   sendFarewellImage: document.getElementById("sendFarewellImage"),
   authLoading: document.getElementById("authLoading"),
@@ -818,6 +820,24 @@ function setStatus(message) {
   elements.settingsStatus.textContent = message;
 }
 
+function clearLaunchStatus() {
+  if (!elements.launchStatus) {
+    return;
+  }
+
+  elements.launchStatus.textContent = "";
+  elements.launchStatus.hidden = true;
+}
+
+function showLaunchStatus(message) {
+  if (!elements.launchStatus) {
+    return;
+  }
+
+  elements.launchStatus.textContent = message;
+  elements.launchStatus.hidden = false;
+}
+
 function setCurrentVehicleNumber(value) {
   sharedSettings.updateCurrent({ vehicleNumber: value });
   renderAll();
@@ -929,24 +949,40 @@ async function showSendFarewell(options = {}) {
   hideSendFarewell();
 }
 
-async function shouldShowMonthlyCompleteImage() {
+function completeStatus(completed, reason) {
+  return {
+    ok: true,
+    completed: Boolean(completed),
+    reason,
+  };
+}
+
+function completeStatusError(reason) {
+  return {
+    ok: false,
+    completed: false,
+    reason,
+  };
+}
+
+async function checkMonthlyCompleteStatus() {
   refreshSharedState();
 
   if (!state.cloudReady) {
-    return false;
+    return completeStatusError("firebase_unready");
   }
 
   if (!hasMonthlySelectionTarget()) {
-    return false;
+    return completeStatusError("missing_selection");
   }
 
   if (!window.FirebaseCloudSync || typeof window.FirebaseCloudSync.listSubmittedMonthsForPayload !== "function") {
-    return false;
+    return completeStatusError("firebase_unready");
   }
 
   const lookupMonths = buildSelectableMonthKeys();
   if (!lookupMonths.length) {
-    return false;
+    return completeStatusError("missing_selection");
   }
 
   let timeoutId = 0;
@@ -965,14 +1001,15 @@ async function shouldShowMonthlyCompleteImage() {
     ]);
 
     if (!result || !result.ok) {
-      return false;
+      return completeStatusError((result && result.reason) || "lookup_failed");
     }
 
     const submittedSet = new Set(Array.isArray(result.months) ? result.months : []);
-    return lookupMonths.every((monthKey) => submittedSet.has(monthKey));
+    const completed = lookupMonths.every((monthKey) => submittedSet.has(monthKey));
+    return completeStatus(completed, completed ? "complete" : "incomplete");
   } catch (error) {
     console.warn("Failed to check monthly inspection availability:", error);
-    return false;
+    return completeStatusError(error && error.message === "month_lookup_timeout" ? "timeout" : "lookup_failed");
   } finally {
     window.clearTimeout(timeoutId);
   }
@@ -987,9 +1024,17 @@ async function openMonthlyApp() {
   elements.app1Button.disabled = true;
 
   try {
+    clearLaunchStatus();
     const user = await requireSignedInUser();
     await stabilizeLauncherSelection(user, { refresh: true });
-    if (await shouldShowMonthlyCompleteImage()) {
+    const result = await checkMonthlyCompleteStatus();
+    if (!result.ok) {
+      showLaunchStatus(LAUNCH_RETRY_MESSAGE);
+      return;
+    }
+
+    if (result.completed) {
+      clearLaunchStatus();
       await showSendFarewell({
         src: MONTHLY_COMPLETE_IMAGE_SRC,
         alt: MONTHLY_COMPLETE_IMAGE_ALT,
@@ -997,7 +1042,11 @@ async function openMonthlyApp() {
       return;
     }
 
+    clearLaunchStatus();
     openApp(APP_CONFIG.app1Path);
+  } catch (error) {
+    console.warn("Failed to launch monthly inspection app:", error);
+    showLaunchStatus(LAUNCH_RETRY_MESSAGE);
   } finally {
     state.monthlyLaunchBusy = false;
     elements.app1Button.disabled = false;
@@ -1066,7 +1115,8 @@ function normalizeDailyInspectionChecksByDay(checksByDay) {
 function normalizeDailyInspectionDayChecks(values) {
   const normalized = {};
   DAILY_INSPECTION_ITEM_IDS.forEach((itemId) => {
-    const value = values[itemId];
+    const rawValue = values[itemId];
+    const value = rawValue === "☓" ? "×" : rawValue;
     normalized[itemId] = DAILY_INSPECTION_CHECK_SEQUENCE.includes(value) ? value : "";
   });
   return normalized;
@@ -1368,27 +1418,38 @@ function isDailyInspectionCurrentDayComplete(record) {
   return isDailyInspectionDayComplete((safeRecord.checksByDay || {})[today]);
 }
 
-async function shouldShowDailyInspectionCompleteImage() {
+async function checkDailyInspectionCompleteStatus() {
   refreshSharedState();
 
   const current = state.shared.current || {};
   const vehicle = String(current.vehicleNumber || "").trim();
   const driver = String(current.driverName || "").trim();
   if (!vehicle || !driver) {
-    return false;
+    return completeStatusError("missing_selection");
   }
 
   const lookupMonths = getDailyInspectionLookupMonths();
   if (!lookupMonths.length) {
-    return false;
+    return completeStatusError("missing_selection");
   }
 
+  let timeoutId = 0;
   let records;
   try {
-    records = await listDailyInspectionRecords(vehicle, driver);
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        reject(new Error("daily_inspection_lookup_timeout"));
+      }, 5000);
+    });
+    records = await Promise.race([
+      listDailyInspectionRecords(vehicle, driver),
+      timeoutPromise,
+    ]);
   } catch (error) {
     console.warn("Failed to check daily inspection availability:", error);
-    return false;
+    return completeStatusError(error && error.message === "daily_inspection_lookup_timeout" ? "timeout" : "lookup_failed");
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 
   const recordsByMonth = (records || []).reduce((result, record) => {
@@ -1400,7 +1461,8 @@ async function shouldShowDailyInspectionCompleteImage() {
     return result;
   }, {});
 
-  return lookupMonths.every((monthKey) => getDailyInspectionPendingDays(monthKey, recordsByMonth[monthKey]).length === 0);
+  const completed = lookupMonths.every((monthKey) => getDailyInspectionPendingDays(monthKey, recordsByMonth[monthKey]).length === 0);
+  return completeStatus(completed, completed ? "complete" : "incomplete");
 }
 
 async function openDailyInspectionApp() {
@@ -1412,9 +1474,17 @@ async function openDailyInspectionApp() {
   elements.app2Button.disabled = true;
 
   try {
+    clearLaunchStatus();
     const user = await requireSignedInUser();
     await stabilizeLauncherSelection(user, { refresh: true });
-    if (await shouldShowDailyInspectionCompleteImage()) {
+    const result = await checkDailyInspectionCompleteStatus();
+    if (!result.ok) {
+      showLaunchStatus(LAUNCH_RETRY_MESSAGE);
+      return;
+    }
+
+    if (result.completed) {
+      clearLaunchStatus();
       await showSendFarewell({
         src: DAILY_INSPECTION_COMPLETE_IMAGE_SRC,
         alt: DAILY_INSPECTION_COMPLETE_IMAGE_ALT,
@@ -1422,7 +1492,11 @@ async function openDailyInspectionApp() {
       return;
     }
 
+    clearLaunchStatus();
     openApp(APP_CONFIG.app2Path);
+  } catch (error) {
+    console.warn("Failed to launch daily inspection app:", error);
+    showLaunchStatus(LAUNCH_RETRY_MESSAGE);
   } finally {
     state.dailyLaunchBusy = false;
     elements.app2Button.disabled = false;

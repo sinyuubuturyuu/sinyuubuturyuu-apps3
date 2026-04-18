@@ -85,6 +85,19 @@ body {
   margin-top: 36px;
 }
 
+.launch-status {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(214, 66, 66, 0.35);
+  border-radius: 12px;
+  background: rgba(214, 66, 66, 0.08);
+  color: #b93333;
+  font-size: 0.94rem;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: left;
+}
+
 .current-selection {
   display: grid;
   gap: 10px;
