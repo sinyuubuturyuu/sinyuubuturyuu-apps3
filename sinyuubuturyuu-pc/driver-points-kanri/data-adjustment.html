@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="../version-sync.js"></script>
+  <script>
+    (function () {
+      const versionSync = window.SinyuubuturyuuPcVersion || null;
+      const version = versionSync ? versionSync.ensureLatestVersion("20260404a") : "20260404a";
+      if (!version) return;
+      window.__SINYUUBUTURYUU_PC_VERSION__ = version;
+    })();
+  </script>
+  <title>管理者用データ調整 | シンユウ物流パソコン用</title>
+  <meta name="description" content="点検データとポイント履歴を確認し、整合性を保って削除する管理者用ページ">
+  <link rel="icon" href="../icons/icon-sinyuubuturyuu-pc.png" type="image/png">
+  <link rel="apple-touch-icon" href="../icons/icon-sinyuubuturyuu-pc.png">
+  <link rel="manifest" href="../manifest.webmanifest?v=20260404b">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="stylesheet" href="../shell.css?v=20260404b">
+  <link rel="stylesheet" href="./driver-points-kanri.css?v=20260404a">
+  <link rel="stylesheet" href="./data-adjustment.css?v=20260404a">
+</head>
+<body class="shell-body">
+  <main class="shell-page adjustment-page">
+    <section class="shell-card adjustment-card">
+      <div class="settings-topbar">
+        <a class="back-link" href="../index.html">トップへ戻る</a>
+        <h1>管理者用データ調整</h1>
+      </div>
+
+      <section class="adjustment-section" aria-labelledby="selectionHeading">
+        <div class="section-head">
+          <h2 id="selectionHeading">対象の選択</h2>
+        </div>
+
+        <div class="adjustment-grid">
+          <label class="field">
+            <span>乗務員</span>
+            <select id="driverSelect">
+              <option value="">読み込み中...</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>車番</span>
+            <select id="vehicleSelect">
+              <option value="">読み込み中...</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>対象月</span>
+            <select id="monthSelect">
+              <option value="">読み込み中...</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="points-summary adjustment-summary" aria-labelledby="currentPointsHeading">
+        <div class="summary-copy">
+          <p id="currentPointsHeading" class="summary-label">現在ポイント</p>
+          <p id="currentPointsValue" class="points-value">--</p>
+          <p id="currentPointsMeta" class="status-text">まだ対象を選択していません。</p>
+        </div>
+
+        <div class="month-overview" aria-label="月内データ概要">
+          <div class="overview-item">
+            <span>日次点検</span>
+            <strong id="overviewDaily">--</strong>
+          </div>
+          <div class="overview-item">
+            <span>月次タイヤ点検</span>
+            <strong id="overviewTire">--</strong>
+          </div>
+          <div class="overview-item">
+            <span>ポイントイベント</span>
+            <strong id="overviewEvents">--</strong>
+          </div>
+          <div class="overview-item">
+            <span>対象月ポイント</span>
+            <strong id="overviewMonthPoints">--</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="adjustment-section" aria-labelledby="eventsHeading">
+        <div class="section-head">
+          <h2 id="eventsHeading">削除対象一覧</h2>
+        </div>
+
+        <div class="table-wrap">
+          <table class="event-table">
+            <thead>
+              <tr>
+                <th>選択</th>
+                <th>日付</th>
+                <th>種別</th>
+                <th>ポイント</th>
+                <th>識別情報</th>
+              </tr>
+            </thead>
+            <tbody id="eventHistoryBody">
+              <tr>
+                <td colspan="5">対象を選択してください。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="button-row">
+        <button id="reviewButton" class="mini-button primary" type="button">関連データを確認</button>
+        <p id="statusText" class="status-text" aria-live="polite"></p>
+      </div>
+
+      <section id="reviewSection" class="adjustment-section review-section" aria-labelledby="reviewHeading" hidden>
+        <div class="section-head">
+          <h2 id="reviewHeading">削除前確認</h2>
+          <p>整合性がOKの場合のみ削除を実行できます。</p>
+        </div>
+
+        <div class="review-grid">
+          <section class="review-panel" aria-labelledby="relatedHeading">
+            <h3 id="relatedHeading">関連データ</h3>
+            <ul id="relatedList" class="review-list"></ul>
+          </section>
+
+          <section class="review-panel" aria-labelledby="planHeading">
+            <h3 id="planHeading">削除予定</h3>
+            <ul id="deletePlanList" class="review-list"></ul>
+          </section>
+        </div>
+
+        <section class="review-panel" aria-labelledby="integrityHeading">
+          <h3 id="integrityHeading">整合性</h3>
+          <ul id="integrityList" class="review-list"></ul>
+          <p id="summaryChangeText" class="summary-change"></p>
+        </section>
+
+        <div class="danger-zone">
+          <div>
+            <strong>この操作は元に戻せません。</strong>
+            <p>実行前に削除対象とポイント変化を必ず確認してください。</p>
+          </div>
+          <button id="executeButton" class="mini-button danger" type="button" disabled>削除を実行</button>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      const versionSync = window.SinyuubuturyuuPcVersion || null;
+      const version = window.__SINYUUBUTURYUU_PC_VERSION__
+        || (versionSync ? versionSync.getVersion("20260404a") : "20260404a");
+      if (!("serviceWorker" in navigator)) {
+        return;
+      }
+
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("../sw.js?v=" + version, {
+          updateViaCache: "none"
+        }).then(function (registration) {
+          return registration.update();
+        }).catch(function (error) {
+          console.warn("Failed to register service worker:", error);
+        });
+      });
+    })();
+  </script>
+  <script src="../launcher-window.js?v=20260330a"></script>
+  <script>
+    (function () {
+      const topBackLink = document.querySelector(".back-link");
+
+      if (window.launcherWindow) {
+        window.launcherWindow.maximizeCurrentWindowIfRequested();
+        window.launcherWindow.bindReturnToLauncher(topBackLink);
+      }
+    })();
+  </script>
+  <script src="../shared-settings.js?v=20260330a"></script>
+  <script src="../getujitiretenkenhyou-pc/firebase/firebase-config.js?v=20260404b"></script>
+  <script src="./firebase-config.js?v=20260404b"></script>
+  <script src="../auth/firebase-auth.js?v=20260404b"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script>
+    (function () {
+      const version = window.__SINYUUBUTURYUU_PC_VERSION__
+        || (window.SinyuubuturyuuPcVersion ? window.SinyuubuturyuuPcVersion.getVersion("20260404b") : "20260404b");
+      const launcherUrl = new URL("../index.html", window.location.href);
+      launcherUrl.searchParams.set("returnTo", window.location.href);
+
+      const authApi = window.DevFirebaseAuth;
+      if (!authApi || typeof authApi.requireUser !== "function") {
+        console.warn("Auth bootstrap was not available.");
+        window.location.replace(launcherUrl.toString());
+        return;
+      }
+
+      authApi.requireUser({ redirectTo: launcherUrl.toString(), waitMs: 5000 }).then(function (user) {
+        if (!user) {
+          return;
+        }
+        loadScript();
+      }).catch(function (error) {
+        console.warn("Auth bootstrap failed:", error);
+        window.location.replace(launcherUrl.toString());
+      });
+
+      function loadScript() {
+        const script = document.createElement("script");
+        script.src = "./data-adjustment.js?v=" + version;
+        document.body.appendChild(script);
+      }
+    })();
+  </script>
+</body>
+</html>

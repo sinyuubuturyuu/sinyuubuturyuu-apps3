@@ -994,31 +994,14 @@
       }
 
       function autoSelectSingleCurrentMonthIfNeeded() {
-        if (!hasBasicSelectionTarget()) return false;
-        if (availableMonthKeys.length !== 1) return false;
-        const onlyMonth = normalizeMonthKey(availableMonthKeys[0]);
-        const currentMonth = currentMonthKey();
-        if (!onlyMonth || onlyMonth !== currentMonth) return false;
-
-        const nextInspectionDate = normalizeInspectionDateForMonth(today(), currentMonth);
-        const hasSameTarget = normalizeMonthKey(current.targetMonth) === currentMonth;
-        const hasSameDate = String(current.inspectionDate || "").trim() === nextInspectionDate;
-        const isConfirmed = current.inspectionDateConfirmed === true;
-        if (hasSameTarget && hasSameDate && isConfirmed) {
-          return false;
-        }
-
-        current.targetMonth = currentMonth;
-        current.inspectionDate = nextInspectionDate;
-        current.inspectionDateConfirmed = true;
-        return true;
+        return false;
       }
 
       function shouldHideSingleCurrentMonthStatus() {
         if (availableMonthKeys.length !== 1) return false;
         const onlyMonth = normalizeMonthKey(availableMonthKeys[0]);
         if (!onlyMonth || onlyMonth !== currentMonthKey()) return false;
-        return normalizeMonthKey(current.targetMonth) === onlyMonth;
+        return current.inspectionDateConfirmed === true && normalizeMonthKey(current.targetMonth) === onlyMonth;
       }
 
       function renderMonthSelection() {
@@ -1039,12 +1022,13 @@
         }
 
         availableMonthKeys.forEach((monthKey) => {
+          const active = confirmed && selectedMonth === monthKey;
           const button = document.createElement("button");
           button.type = "button";
-          button.className = `btn${selectedMonth === monthKey ? " primary" : ""}`;
+          button.className = `btn${active ? " primary" : ""}`;
           button.textContent = formatMonthLabel(monthKey);
           button.dataset.monthKey = monthKey;
-          button.setAttribute("aria-pressed", selectedMonth === monthKey ? "true" : "false");
+          button.setAttribute("aria-pressed", active ? "true" : "false");
           el.targetMonthButtons.appendChild(button);
         });
         if (monthSelectionError) {
@@ -1063,7 +1047,7 @@
           el.monthSelectionStatus.textContent = `${formatMonthLabel(current.targetMonth)} / 点検日: ${formatDateLabel(current.inspectionDate)}`;
           return;
         }
-        if (selectedMonth) {
+        if (selectedMonth && confirmed) {
           el.monthSelectionStatus.textContent = `${formatMonthLabel(selectedMonth)} / 点検日: ${formatDateLabel(current.inspectionDate)}`;
           return;
         }
@@ -2379,7 +2363,7 @@
           ev.preventDefault();
           ev.stopImmediatePropagation();
           const selectedMonth = normalizeMonthKey(current.targetMonth);
-          if (!selectedMonth) {
+          if (!selectedMonth || current.inspectionDateConfirmed !== true) {
             showToast("対象月を選択してから点検を開始してください");
             return;
           }

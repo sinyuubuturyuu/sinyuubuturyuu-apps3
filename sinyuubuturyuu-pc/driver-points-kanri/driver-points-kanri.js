@@ -21,17 +21,8 @@
   });
 
   const elements = {
-    vehicleSelect: document.getElementById("vehicleSelect"),
-    driverSelect: document.getElementById("driverSelect"),
-    saveButton: document.getElementById("saveButton"),
-    openLeaderboardButton: document.getElementById("openLeaderboardButton"),
-    closeLeaderboardButton: document.getElementById("closeLeaderboardButton"),
-    leaderboardOverlay: document.getElementById("leaderboardOverlay"),
     leaderboardStatus: document.getElementById("leaderboardStatus"),
     leaderboardBody: document.getElementById("leaderboardBody"),
-    pointsValue: document.getElementById("pointsValue"),
-    pointsInput: document.getElementById("pointsInput"),
-    pointsMeta: document.getElementById("pointsMeta"),
     statusText: document.getElementById("statusText")
   };
 
@@ -44,47 +35,10 @@
     driverOptions: [],
     leaderboardRows: [],
     loadingPoints: false,
-    savingPoints: false,
     loadingLeaderboard: false
   };
 
-  bindEvents();
   void initialize();
-
-  function bindEvents() {
-    elements.vehicleSelect.addEventListener("change", function () {
-      void loadPointsForCurrentSelection();
-    });
-
-    elements.driverSelect.addEventListener("change", function () {
-      void loadPointsForCurrentSelection();
-    });
-
-    elements.saveButton.addEventListener("click", function () {
-      void savePoints();
-    });
-
-    elements.openLeaderboardButton.addEventListener("click", function () {
-      void openLeaderboard();
-    });
-
-    elements.closeLeaderboardButton.addEventListener("click", function () {
-      closeLeaderboard();
-    });
-
-    elements.pointsInput.addEventListener("keydown", function (event) {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        void savePoints();
-      }
-    });
-
-    document.addEventListener("keydown", function (event) {
-      if (event.key === "Escape" && !elements.leaderboardOverlay.hidden) {
-        closeLeaderboard();
-      }
-    });
-  }
 
   async function initialize() {
     setStatus("候補を読み込んでいます...");
@@ -99,12 +53,8 @@
       state.optionSourceReady = true;
 
       if (state.vehicleOptions.length && state.driverOptions.length) {
-        elements.vehicleSelect.value = "";
-        elements.driverSelect.value = "";
-        elements.pointsValue.textContent = "--";
-        elements.pointsInput.value = "";
-        elements.pointsMeta.textContent = "車番と乗務員を選択してください。";
-        setStatus("車番と乗務員を選択してください。");
+        setStatus("");
+        await loadLeaderboard();
       } else {
         setStatus("車番または乗務員の候補がまだありません。設定画面で登録してください。", true);
       }
@@ -140,8 +90,6 @@
 
     state.vehicleOptions = buildVehicleOptions(localOptions.vehicles, cloudVehicles);
     state.driverOptions = buildDriverOptions(localOptions.drivers, cloudDrivers);
-    renderOptions(elements.vehicleSelect, state.vehicleOptions, "車番を選択");
-    renderOptions(elements.driverSelect, state.driverOptions, "乗務員を選択");
   }
 
   async function initializePointsDb() {
@@ -251,77 +199,6 @@
     });
 
     return options;
-  }
-
-  function renderOptions(select, options, placeholder) {
-    select.innerHTML = "";
-
-    const placeholderOption = document.createElement("option");
-    placeholderOption.value = "";
-    placeholderOption.textContent = placeholder;
-    select.appendChild(placeholderOption);
-
-    options.forEach(function (option) {
-      const optionElement = document.createElement("option");
-      optionElement.value = option.value;
-      optionElement.textContent = option.label;
-      select.appendChild(optionElement);
-    });
-  }
-
-  async function loadPointsForCurrentSelection(forceReloadSchema) {
-    const vehicle = normalizeText(elements.vehicleSelect.value);
-    const driverOption = getSelectedDriverOption();
-
-    state.currentRecord = null;
-    elements.pointsMeta.textContent = "ポイントを検索しています...";
-    elements.pointsValue.textContent = "--";
-
-    if (!vehicle || !driverOption) {
-      elements.pointsMeta.textContent = "車番と乗務員を選択してください。";
-      elements.pointsInput.value = "";
-      setStatus("車番と乗務員を選択してください。", true);
-      syncButtons();
-      return;
-    }
-
-    if (!state.pointsDb) {
-      setStatus("ポイント用 Firebase に接続できていません。", true);
-      syncButtons();
-      return;
-    }
-
-    state.loadingPoints = true;
-    syncButtons();
-
-    try {
-      const schema = await resolveSchema(forceReloadSchema === true);
-      const record = await findPointRecord(schema, vehicle, driverOption);
-
-      state.activeSchema = schema;
-      state.currentRecord = record;
-
-      if (!record) {
-        elements.pointsValue.textContent = "0";
-        elements.pointsInput.value = "";
-        elements.pointsMeta.textContent = "該当データはまだありません。新規保存すると作成されます。";
-        setStatus("該当するポイントデータは未登録です。");
-        return;
-      }
-
-      const points = getRecordPoints(record, schema);
-      elements.pointsValue.textContent = String(points);
-      elements.pointsInput.value = "";
-      elements.pointsMeta.textContent = "";
-      setStatus("ポイントを読み込みました。");
-    } catch (error) {
-      console.warn("Failed to load points:", error);
-      elements.pointsMeta.textContent = "ポイントの読み込みに失敗しました。";
-      setStatus("ポイントの読み込みに失敗しました: " + formatError(error), true);
-    } finally {
-      state.loadingPoints = false;
-      syncButtons();
-    }
   }
 
   async function resolveSchema(forceReloadSchema) {
@@ -465,278 +342,6 @@
     };
   }
 
-  async function findPointRecord(schema, vehicle, driverOption) {
-    let matchingRecord = null;
-    const collectionRef = state.pointsDb.collection(schema.collectionName);
-    const summaryKindValue = normalizeText(pointsSettings.summaryKindValue);
-
-    if (summaryKindValue) {
-      for (const vehicleField of uniqueFieldNames((pointsSettings.vehicleFieldCandidates || []).concat(schema.vehicleField))) {
-        try {
-          const summarySnapshot = await getServerQuerySnapshot(
-            collectionRef
-              .where("kind", "==", summaryKindValue)
-              .where(vehicleField, "==", vehicle)
-              .limit(100)
-          );
-          const summaryCandidates = summarySnapshot.docs.map(function (docSnapshot) {
-            return {
-              id: docSnapshot.id,
-              ref: docSnapshot.ref,
-              data: docSnapshot.data() || {}
-            };
-          }).filter(function (record) {
-            return recordMatchesSelection(record, schema, vehicle, driverOption);
-          });
-
-          matchingRecord = pickBestPointRecord(summaryCandidates, schema);
-          if (matchingRecord) {
-            return matchingRecord;
-          }
-        } catch (error) {
-          console.warn("Summary filtered query failed:", vehicleField, error);
-        }
-      }
-
-      try {
-        const summarySnapshot = await getServerQuerySnapshot(
-          collectionRef
-            .where("kind", "==", summaryKindValue)
-            .limit(300)
-        );
-        const summaryCandidates = summarySnapshot.docs.map(function (docSnapshot) {
-          return {
-            id: docSnapshot.id,
-            ref: docSnapshot.ref,
-            data: docSnapshot.data() || {}
-          };
-        }).filter(function (record) {
-          return recordMatchesSelection(record, schema, vehicle, driverOption);
-        });
-
-        matchingRecord = pickBestPointRecord(summaryCandidates, schema);
-        if (matchingRecord) {
-          return matchingRecord;
-        }
-      } catch (error) {
-        console.warn("Summary collection scan failed:", error);
-      }
-    }
-
-    for (const vehicleField of uniqueFieldNames((pointsSettings.vehicleFieldCandidates || []).concat(schema.vehicleField))) {
-      try {
-        const filteredSnapshot = await getServerQuerySnapshot(
-          collectionRef
-            .where(vehicleField, "==", vehicle)
-            .limit(100)
-        );
-        const candidates = filteredSnapshot.docs.map(function (docSnapshot) {
-          return {
-            id: docSnapshot.id,
-            ref: docSnapshot.ref,
-            data: docSnapshot.data() || {}
-          };
-        }).filter(function (record) {
-          return recordMatchesSelection(record, schema, vehicle, driverOption);
-        });
-
-        matchingRecord = pickBestPointRecord(candidates, schema);
-        if (matchingRecord) {
-          return matchingRecord;
-        }
-      } catch (error) {
-        console.warn("Vehicle filtered query failed:", vehicleField, error);
-      }
-    }
-
-    if (!matchingRecord) {
-      const snapshot = await getServerQuerySnapshot(
-        collectionRef.limit(300)
-      );
-      const candidates = snapshot.docs
-        .map(function (docSnapshot) {
-          return {
-            id: docSnapshot.id,
-            ref: docSnapshot.ref,
-            data: docSnapshot.data() || {}
-          };
-        })
-        .filter(function (record) {
-          return recordMatchesSelection(record, schema, vehicle, driverOption);
-        });
-      matchingRecord = pickBestPointRecord(candidates, schema);
-    }
-
-    if (matchingRecord) {
-      return matchingRecord;
-    }
-
-    for (const docId of buildCandidateDocIds(schema, vehicle, driverOption)) {
-      const docSnapshot = await getServerDocumentSnapshot(
-        state.pointsDb.collection(schema.collectionName).doc(docId)
-      );
-      if (docSnapshot.exists) {
-        return {
-          id: docSnapshot.id,
-          ref: docSnapshot.ref,
-          data: docSnapshot.data() || {}
-        };
-      }
-    }
-
-    return null;
-  }
-
-  function recordMatchesSelection(record, schema, vehicle, driverOption) {
-    const vehicleKeys = collectNormalizedFieldValues(
-      record.data,
-      uniqueFieldNames([schema.vehicleField].concat(pointsSettings.vehicleFieldCandidates || [])),
-      normalizeText
-    );
-    const driverKeys = collectNormalizedFieldValues(
-      record.data,
-      uniqueFieldNames(["driverRaw", "driverDisplay", "driverAliases", schema.driverField].concat(pointsSettings.driverFieldCandidates || [])),
-      normalizeDriverKey
-    );
-    const selectedDriverKeys = [driverOption.value, driverOption.label]
-      .map(function (value) {
-        return normalizeDriverKey(value);
-      })
-      .filter(Boolean);
-
-    return vehicleKeys.includes(vehicle) && driverKeys.some(function (value) {
-      return selectedDriverKeys.includes(value);
-    });
-  }
-
-  function pickBestPointRecord(records, schema) {
-    if (!Array.isArray(records) || !records.length) {
-      return null;
-    }
-
-    const candidates = records.filter(isSummaryPointRecord);
-    if (!candidates.length) {
-      return null;
-    }
-
-    candidates.sort(function (left, right) {
-      return getRecordUpdatedAtTime(right.data, schema) - getRecordUpdatedAtTime(left.data, schema);
-    });
-
-    return candidates[0] || null;
-  }
-
-  function buildCandidateDocIds(schema, vehicle, driverOption) {
-    const docIds = [];
-    const seen = new Set();
-    const rawDriver = normalizeText(driverOption.value);
-    const displayDriver = normalizeText(driverOption.label);
-
-    (schema.docIdPatterns || []).forEach(function (pattern) {
-      [
-        pattern.replace("{vehicle}", sanitizeDocIdPart(vehicle)).replace("{driver}", sanitizeDocIdPart(rawDriver)),
-        pattern.replace("{vehicle}", sanitizeDocIdPart(vehicle)).replace("{driver}", sanitizeDocIdPart(displayDriver))
-      ].forEach(function (docId) {
-        if (!docId || seen.has(docId)) {
-          return;
-        }
-        seen.add(docId);
-        docIds.push(docId);
-      });
-    });
-
-    return docIds;
-  }
-
-  async function savePoints() {
-    const vehicle = normalizeText(elements.vehicleSelect.value);
-    const driverOption = getSelectedDriverOption();
-    const rawDeltaPoints = normalizeText(elements.pointsInput.value);
-    const deltaPoints = Number(rawDeltaPoints);
-
-    if (!vehicle || !driverOption) {
-      setStatus("保存する前に車番と乗務員を選択してください。", true);
-      return;
-    }
-
-    if (!rawDeltaPoints || !Number.isFinite(deltaPoints)) {
-      setStatus("加点または減点するポイント数を入力してください。", true);
-      return;
-    }
-
-    if (!state.pointsDb) {
-      setStatus("ポイント用 Firebase に接続できていません。", true);
-      return;
-    }
-
-    state.savingPoints = true;
-    syncButtons();
-
-    try {
-      const schema = await resolveSchema(false);
-      const existingRecord = await findPointRecord(schema, vehicle, driverOption);
-      const collectionRef = state.pointsDb.collection(schema.collectionName);
-      const currentPoints = existingRecord ? getRecordPoints(existingRecord, schema) : 0;
-      const nextPoints = currentPoints + deltaPoints;
-      const payload = {};
-      const pointsFieldName = resolvePointsFieldName(existingRecord ? existingRecord.data : null, schema);
-
-      payload[pointsFieldName] = nextPoints;
-      payload[schema.updatedAtField] = window.firebase.firestore.FieldValue.serverTimestamp();
-
-      if (existingRecord) {
-        await collectionRef.doc(existingRecord.id).set(payload, { merge: true });
-      } else {
-        payload.kind = normalizeText(pointsSettings.summaryKindValue) || "driver_points_summary";
-        payload.vehicleNumber = vehicle;
-        payload.vehicleKey = vehicle;
-        payload.driverName = driverOption.label;
-        payload.driverKey = normalizeDriverKey(driverOption.label);
-        payload[schema.vehicleField] = vehicle;
-        payload[schema.driverField] = schema.driverField === "driverKey"
-          ? normalizeDriverKey(driverOption.label)
-          : driverOption.label;
-        payload.driverRaw = driverOption.value;
-        payload.createdAt = window.firebase.firestore.FieldValue.serverTimestamp();
-
-        const newDocId = buildNewDocId(schema, vehicle, driverOption);
-        await collectionRef.doc(newDocId).set(payload, { merge: true });
-      }
-
-      await loadPointsForCurrentSelection();
-      setStatus("ポイントを更新しました: " + currentPoints + (deltaPoints >= 0 ? " + " : " - ") + Math.abs(deltaPoints) + " = " + nextPoints);
-    } catch (error) {
-      console.warn("Failed to save points:", error);
-      setStatus("ポイントの保存に失敗しました: " + formatError(error), true);
-    } finally {
-      state.savingPoints = false;
-      syncButtons();
-    }
-  }
-
-  function buildNewDocId(schema, vehicle, driverOption) {
-    const summaryPrefix = "driver_points_summary_";
-    if (window.crypto && typeof window.crypto.randomUUID === "function") {
-      return summaryPrefix + window.crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    }
-    return summaryPrefix + Date.now().toString(16);
-  }
-
-  async function openLeaderboard() {
-    elements.leaderboardOverlay.hidden = false;
-    elements.leaderboardOverlay.setAttribute("aria-hidden", "false");
-    document.body.classList.add("leaderboard-open");
-    elements.leaderboardStatus.textContent = "一覧を読み込んでいます...";
-    elements.leaderboardBody.innerHTML = '<tr><td colspan="3">読み込み中...</td></tr>';
-    await loadLeaderboard();
-  }
-
-  function closeLeaderboard() {
-    elements.leaderboardOverlay.hidden = true;
-    elements.leaderboardOverlay.setAttribute("aria-hidden", "true");
-    document.body.classList.remove("leaderboard-open");
-  }
-
   async function loadLeaderboard() {
     if (!state.pointsDb) {
       elements.leaderboardStatus.textContent = "Firebase に接続できていません。";
@@ -745,6 +350,8 @@
     }
 
     state.loadingLeaderboard = true;
+    elements.leaderboardStatus.textContent = "一覧を読み込んでいます...";
+    elements.leaderboardBody.innerHTML = '<tr><td colspan="3">読み込み中...</td></tr>';
     syncButtons();
 
     try {
@@ -842,6 +449,9 @@
       }
 
       const points = getRecordPoints(record, schema);
+      if (points === 0) {
+        return;
+      }
       const existing = totalsByDriver.get(driverKey);
       if (existing) {
         existing.points += points;
@@ -871,18 +481,6 @@
       });
     });
 
-    driverMetaByKey.forEach(function (meta, driverKey) {
-      if (!totalsByDriver.has(driverKey)) {
-        totalsByDriver.set(driverKey, {
-          key: driverKey,
-          name: meta.name,
-          order: meta.order,
-          points: 0,
-          breakdowns: []
-        });
-      }
-    });
-
     return Array.from(totalsByDriver.values()).sort(function (left, right) {
       if (right.points !== left.points) {
         return right.points - left.points;
@@ -905,7 +503,7 @@
 
     elements.leaderboardStatus.textContent = rows.length + "名のポイントを表示しています。";
     elements.leaderboardBody.innerHTML = rows.map(function (row, index) {
-      const breakdownMarkup = (Array.isArray(row.breakdowns) && row.breakdowns.length > 1
+      const breakdownMarkup = (Array.isArray(row.breakdowns) && row.breakdowns.length
         ? row.breakdowns.slice().sort(function (left, right) {
             if (right.points !== left.points) {
               return right.points - left.points;
@@ -974,17 +572,6 @@
       || "名称未設定";
   }
 
-  function getSelectedDriverOption() {
-    const selectedValue = normalizeText(elements.driverSelect.value);
-    if (!selectedValue) {
-      return null;
-    }
-
-    return state.driverOptions.find(function (option) {
-      return option.value === selectedValue;
-    }) || null;
-  }
-
   function getStringArray(source) {
     if (!source || !Array.isArray(source.values)) {
       return [];
@@ -1010,10 +597,6 @@
       .normalize("NFKC")
       .replace(/\s+/g, "")
       .toLowerCase();
-  }
-
-  function sanitizeDocIdPart(value) {
-    return normalizeText(value).replace(/[\/\\?#\[\]]/g, "-");
   }
 
   function escapeHtml(value) {
@@ -1177,9 +760,6 @@
   }
 
   function syncButtons() {
-    const hasSelection = Boolean(normalizeText(elements.vehicleSelect.value) && getSelectedDriverOption());
-    elements.saveButton.disabled = !hasSelection || state.loadingPoints || state.savingPoints || !state.pointsDb;
-    elements.openLeaderboardButton.disabled = state.loadingLeaderboard || !state.pointsDb;
   }
 
   function setStatus(message, isError) {

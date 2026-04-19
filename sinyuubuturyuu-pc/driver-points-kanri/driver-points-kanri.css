@@ -47,6 +47,10 @@
     #fff;
 }
 
+.points-summary-readonly {
+  grid-template-columns: 1fr;
+}
+
 .summary-copy {
   display: grid;
   gap: 8px;
@@ -91,6 +95,14 @@
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(243, 247, 251, 0.96));
   box-shadow: 0 28px 60px rgba(24, 42, 64, 0.24);
+}
+
+.leaderboard-panel-inline {
+  height: min(70vh, 720px);
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .leaderboard-topbar {
@@ -214,30 +226,14 @@ body.leaderboard-open {
     border-radius: 22px;
   }
 
+  .leaderboard-panel-inline {
+    padding: 0;
+    border-radius: 0;
+  }
+
   .leaderboard-topbar {
     align-items: stretch;
     flex-direction: column;
   }
 }
 
-.field-inline-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.field-inline-action .mini-button {
-  min-width: 132px;
-}
-
-@media (max-width: 720px) {
-  .field-inline-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .field-inline-action .mini-button {
-    width: 100%;
-  }
-}

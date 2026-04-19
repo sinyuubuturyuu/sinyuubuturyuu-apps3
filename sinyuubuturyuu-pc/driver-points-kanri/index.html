@@ -12,8 +12,8 @@
       window.__SINYUUBUTURYUU_PC_VERSION__ = version;
     })();
   </script>
-  <title>ポイント付与管理 | シンユウ物流パソコン用</title>
-  <meta name="description" content="車番と乗務員ごとのポイントを確認して保存する管理画面">
+  <title>社員ポイント一覧 | シンユウ物流パソコン用</title>
+  <meta name="description" content="社員ごとのポイント一覧を確認する管理画面">
   <link rel="icon" href="../icons/icon-sinyuubuturyuu-pc.png" type="image/png">
   <link rel="apple-touch-icon" href="../icons/icon-sinyuubuturyuu-pc.png">
   <link rel="manifest" href="../manifest.webmanifest?v=20260330a">
@@ -26,75 +26,33 @@
     <section class="shell-card points-card">
       <div class="settings-topbar">
         <a class="back-link" href="../index.html">トップへ戻る</a>
-        <h1>ポイント付与管理</h1>
+        <h1>社員ポイント一覧</h1>
       </div>
 
-      <div class="points-grid">
-        <label class="field">
-          <span>車番</span>
-          <select id="vehicleSelect">
-            <option value="">読み込み中...</option>
-          </select>
-        </label>
-
-        <label class="field">
-          <span>乗務員</span>
-          <select id="driverSelect">
-            <option value="">読み込み中...</option>
-          </select>
-        </label>
-      </div>
-
-      <section class="points-summary" aria-labelledby="pointsSummaryHeading">
-        <div class="summary-copy">
-          <p id="pointsSummaryHeading" class="summary-label">現在のポイント</p>
-          <p id="pointsValue" class="points-value">--</p>
-          <p id="pointsMeta" class="status-text">まだポイントを読み込んでいません。</p>
-        </div>
-
-        <label class="field field-inline-action">
-          <span class="field-inline-header">
-            <span>加減算ポイント</span>
-            <button id="saveButton" class="mini-button primary" type="button">確定</button>
-          </span>
-          <input id="pointsInput" type="number" inputmode="numeric" step="1" placeholder="+10 または -5">
-        </label>
-      </section>
-
-      <div class="button-row">
-        <button id="openLeaderboardButton" class="mini-button secondary" type="button">社員ポイント一覧を見る</button>
-      </div>
       <p id="statusText" class="status-text" aria-live="polite"></p>
+
+      <section id="leaderboardPanel" class="leaderboard-panel leaderboard-panel-inline">
+        <p id="leaderboardStatus" class="status-text" aria-live="polite"></p>
+
+        <div class="leaderboard-table-wrap">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th>順位</th>
+                <th>社員名</th>
+                <th>ポイント</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboardBody">
+              <tr>
+                <td colspan="3">読み込み中...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </section>
   </main>
-
-  <section id="leaderboardOverlay" class="leaderboard-overlay" hidden aria-hidden="true">
-    <div class="leaderboard-panel">
-      <div class="leaderboard-topbar">
-        <h2>社員ポイント一覧</h2>
-        <button id="closeLeaderboardButton" class="mini-button secondary" type="button">閉じる</button>
-      </div>
-
-      <p id="leaderboardStatus" class="status-text" aria-live="polite"></p>
-
-      <div class="leaderboard-table-wrap">
-        <table class="leaderboard-table">
-          <thead>
-            <tr>
-              <th>順位</th>
-              <th>社員名</th>
-              <th>ポイント</th>
-            </tr>
-          </thead>
-          <tbody id="leaderboardBody">
-            <tr>
-              <td colspan="3">読み込み中...</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
 
   <script>
     (function () {
