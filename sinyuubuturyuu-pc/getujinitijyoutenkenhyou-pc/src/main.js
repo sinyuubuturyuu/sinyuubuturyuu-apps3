@@ -21,6 +21,7 @@ const EXCEL_TEMPLATE_FILE_NAME = "月次日常点検 2026.xlsx";
 const EXCEL_TEMPLATE_ASSET_FILE_NAME = "monthly-inspection-template.xlsx";
 const EXCEL_TEMPLATE_API_PATH = "/api/excel-template";
 const EXCEL_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const EXCEL_REFERENCE_SHEET_NAME = "3月";
 const EXCEL_TEMPLATE_SHEET_NAME = "日常点検記録表原本";
 const EXCEL_MONTH_SHEET_NAMES = {
   1: "日常点検記録表1月",
@@ -34,11 +35,14 @@ const PACKAGE_RELATIONSHIP_NAMESPACE = "http://schemas.openxmlformats.org/packag
 const EXCEL_CONTENT_TYPES_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/content-types";
 const EXCEL_DRAWING_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing";
 const EXCEL_DRAWING_MAIN_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/main";
-const EXCEL_DAY_COLUMNS = Array.from({ length: 31 }, (_, index) => columnNumberToLabel(index + 10));
+const EXCEL_DAY_COLUMNS = Array.from({ length: 31 }, (_, index) => columnNumberToLabel(index + 17));
 const EXCEL_WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 const EXCEL_HOLIDAY_FILL_RGB = "FFF7DDD5";
-const EXCEL_CHECK_START_ROW = 7;
-const EXCEL_BOTTOM_STAMP_ROW = 29;
+const EXCEL_DAY_LABEL_ROW = 6;
+const EXCEL_WEEKDAY_LABEL_ROW = 7;
+const EXCEL_CHECK_START_ROW = 8;
+const EXCEL_BOTTOM_STAMP_ROW = 30;
+const EXCEL_FOOTNOTE_CELL = "A32";
 const EXCEL_IMAGE_RELATIONSHIP_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
 const EXCEL_DRAWING_RELATIONSHIP_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing";
 const EXCEL_PNG_CONTENT_TYPE = "image/png";
@@ -46,7 +50,7 @@ const EXCEL_EMUS_PER_PIXEL = 9525;
 const EXCEL_BOTTOM_STAMP_ROW_SPAN = 2;
 const EXCEL_STAMP_IMAGE_SIZES = {
   large: { width: 54, height: 54 },
-  small: { width: 20, height: 20 }
+  small: { width: 23, height: 23 }
 };
 const EXCEL_CUSTOM_STAMP_ASSETS = {
   "若本:small": new URL("./assets/wakamoto-stamp.svg", import.meta.url).href
@@ -201,10 +205,7 @@ const operationHeadEl = document.getElementById("operationHead");
 const maintenanceHeadEl = document.getElementById("maintenanceHead");
 const driverHeadEl = document.getElementById("driverHead");
 const exportExcelBtnEl = document.getElementById("exportExcelBtn");
-const exportCsvBtnEl = document.getElementById("exportCsvBtn");
-const importCsvBtnEl = document.getElementById("importCsvBtn");
 const helpBtnEl = document.getElementById("helpBtn");
-const csvImportInputEl = document.getElementById("csvImportInput");
 const maintenanceNoteModalEl = document.getElementById("maintenanceNoteModal");
 const maintenanceNoteModalDayEl = document.getElementById("maintenanceNoteModalDay");
 const maintenanceNoteModalItemsEl = document.getElementById("maintenanceNoteModalItems");
@@ -1727,6 +1728,12 @@ function clearElementChildren(element) {
   }
 }
 
+function createEmptyDrawingXml(drawingXml) {
+  const drawingDoc = parseXmlDocument(drawingXml);
+  clearElementChildren(drawingDoc.documentElement);
+  return serializeXmlDocument(drawingDoc);
+}
+
 function ensureContentTypeDefault(contentTypesDoc, extension, contentType) {
   const existing = Array.from(contentTypesDoc.getElementsByTagNameNS(EXCEL_CONTENT_TYPES_NAMESPACE, "Default"))
     .find((node) => (node.getAttribute("Extension") || "").toLowerCase() === extension.toLowerCase());
@@ -1917,7 +1924,8 @@ async function createAnnualExcelSheetTargets(workbook, workbookDoc, workbookRels
   }
 
   const worksheetTargets = getWorksheetSheetTargets(workbookDoc, workbookRelsDoc);
-  const sourceTarget = getWorkbookSheetTarget(workbookDoc, workbookRelsDoc, EXCEL_TEMPLATE_SHEET_NAME)
+  const sourceTarget = getWorkbookSheetTarget(workbookDoc, workbookRelsDoc, EXCEL_REFERENCE_SHEET_NAME)
+    || getWorkbookSheetTarget(workbookDoc, workbookRelsDoc, EXCEL_TEMPLATE_SHEET_NAME)
     || getInspectionSheetTargets(workbookDoc, workbookRelsDoc)
       .find((target) => /^日常点検記録表\d+月$/.test(target.sheet.getAttribute("name")))
     || worksheetTargets[0];
@@ -1946,6 +1954,7 @@ async function createAnnualExcelSheetTargets(workbook, workbookDoc, workbookRels
   if (!sourceDrawingXml) {
     throw new Error(`Excelテンプレートの元 drawing を開けません: ${sourceDrawingPath}`);
   }
+  const emptySourceDrawingXml = createEmptyDrawingXml(sourceDrawingXml);
 
   Array.from(sheetsRoot.childNodes)
     .filter((node) => node.nodeType === Node.ELEMENT_NODE && node.localName === "sheet")
@@ -1988,7 +1997,7 @@ async function createAnnualExcelSheetTargets(workbook, workbookDoc, workbookRels
 
     workbook.file(sheetFilePath, sourceWorksheetXml);
     workbook.file(worksheetRelsPath, serializeXmlDocument(worksheetRelsDoc));
-    workbook.file(drawingPath, sourceDrawingXml);
+    workbook.file(drawingPath, emptySourceDrawingXml);
 
     ensureContentTypeOverride(
       contentTypesDoc,
@@ -2268,9 +2277,9 @@ function getStampPlacementsForRecord(recordData = {}) {
     placements.push({
       name: recordData.operationManager,
       size: "large",
-      cellRef: "AI2",
-      columnOffset: 18000,
-      rowOffset: 12000
+      cellRef: "AP3",
+      columnOffset: 57150,
+      rowOffset: 9525
     });
   }
 
@@ -2278,9 +2287,9 @@ function getStampPlacementsForRecord(recordData = {}) {
     placements.push({
       name: recordData.maintenanceManager,
       size: "large",
-      cellRef: "AL2",
-      columnOffset: 18000,
-      rowOffset: 12000
+      cellRef: "AS3",
+      columnOffset: 57150,
+      rowOffset: 9525
     });
   }
 
@@ -2294,8 +2303,8 @@ function getStampPlacementsForRecord(recordData = {}) {
       name: stampName,
       size: "small",
       cellRef: `${EXCEL_DAY_COLUMNS[day - 1]}${EXCEL_BOTTOM_STAMP_ROW}`,
-      columnOffset: 19050,
-      rowOffset: 19050
+      columnOffset: 0,
+      rowOffset: 0
     });
   }
 
@@ -2531,28 +2540,14 @@ function removeWorksheetMergeRange(worksheetDoc, rangeRef) {
 
 function normalizeExcelManagerStampLayout(worksheetDoc) {
   const worksheetContext = buildWorksheetContext(worksheetDoc);
-  const neutralStyleRefs = {
-    1: "AB1",
-    2: "AB2",
-    3: "AB3",
-    4: "AB4"
-  };
 
-  setWorksheetCellText(worksheetContext, "AC1", "運行管理者");
-  setWorksheetCellText(worksheetContext, "AF1", "整備管理者");
+  setWorksheetCellText(worksheetContext, "AP2", "運行管理者");
+  setWorksheetCellText(worksheetContext, "AS2", "整備管理者");
 
-  ["AI1:AK1", "AL1:AN1", "AI2:AK4", "AL2:AN4"].forEach((rangeRef) => {
-    removeWorksheetMergeRange(worksheetDoc, rangeRef);
-  });
-
-  for (let row = 1; row <= 4; row += 1) {
-    const styleIndex = worksheetContext.cellMap.get(neutralStyleRefs[row])?.getAttribute("s");
-    ["AI", "AJ", "AK", "AL", "AM", "AN"].forEach((columnLabel) => {
+  for (let row = 3; row <= 5; row += 1) {
+    ["AP", "AQ", "AR", "AS", "AT", "AU"].forEach((columnLabel) => {
       const cellRef = `${columnLabel}${row}`;
       setWorksheetCellText(worksheetContext, cellRef, "");
-      if (styleIndex != null) {
-        setWorksheetCellStyle(worksheetContext, cellRef, styleIndex);
-      }
     });
   }
 }
@@ -2578,7 +2573,7 @@ function applyHolidayStylesToWorksheetForRecord(worksheetDoc, styleFillVariantMa
       ? "inactive"
       : (isCustomHoliday ? "holiday" : "normal");
 
-    for (let rowNumber = 5; rowNumber <= 30; rowNumber += 1) {
+    for (let rowNumber = EXCEL_DAY_LABEL_ROW; rowNumber < EXCEL_BOTTOM_STAMP_ROW + EXCEL_BOTTOM_STAMP_ROW_SPAN; rowNumber += 1) {
       const cell = cellMap.get(`${columnLabel}${rowNumber}`);
       if (!cell || !cell.hasAttribute("s")) {
         continue;
@@ -2608,20 +2603,19 @@ function populateExcelWorksheet(worksheetDoc, options = {}) {
   const driverIdentity = getDriverIdentity();
   const worksheetContext = buildWorksheetContext(worksheetDoc);
 
-  setWorksheetCellText(worksheetContext, "A3", `令和${getReiwaYear(year)}年${month}月`);
+  setWorksheetCellText(worksheetContext, "A4", `令和${getReiwaYear(year)}年${month}月`);
 
   if (isTemplateLayout) {
-    setWorksheetCellText(worksheetContext, "F3", `車番：${vehicleEl.value.trim()}`);
-    setWorksheetCellText(worksheetContext, "J3", `運転者名（点検者）：${driverIdentity.displayValue}`);
+    setWorksheetCellText(worksheetContext, "J4", vehicleEl.value.trim());
+    setWorksheetCellText(worksheetContext, "Z4", driverIdentity.displayValue);
   } else {
-    setWorksheetCellText(worksheetContext, "H3", vehicleEl.value.trim());
-    setWorksheetCellText(worksheetContext, "P3", driverIdentity.displayValue);
+    setWorksheetCellText(worksheetContext, "J4", vehicleEl.value.trim());
+    setWorksheetCellText(worksheetContext, "Z4", driverIdentity.displayValue);
   }
 
-  setWorksheetCellText(worksheetContext, "AC2", "");
-  setWorksheetCellText(worksheetContext, "AF2", "");
-  setWorksheetCellText(worksheetContext, "AI2", "");
-  setWorksheetCellText(worksheetContext, "AL2", "");
+  setWorksheetCellText(worksheetContext, "AP3", "");
+  setWorksheetCellText(worksheetContext, "AS3", "");
+  setWorksheetCellText(worksheetContext, EXCEL_FOOTNOTE_CELL, "");
 
   for (let day = 1; day <= EXCEL_DAY_COLUMNS.length; day += 1) {
     const columnLabel = EXCEL_DAY_COLUMNS[day - 1];
@@ -2629,8 +2623,8 @@ function populateExcelWorksheet(worksheetDoc, options = {}) {
     const weekday = day <= daysInMonth
       ? EXCEL_WEEKDAY_LABELS[new Date(year, month - 1, day).getDay()]
       : "";
-    setWorksheetCellText(worksheetContext, `${columnLabel}5`, dayLabel);
-    setWorksheetCellText(worksheetContext, `${columnLabel}6`, weekday);
+    setWorksheetCellText(worksheetContext, `${columnLabel}${EXCEL_DAY_LABEL_ROW}`, dayLabel);
+    setWorksheetCellText(worksheetContext, `${columnLabel}${EXCEL_WEEKDAY_LABEL_ROW}`, weekday);
     setWorksheetCellText(worksheetContext, `${columnLabel}${EXCEL_BOTTOM_STAMP_ROW}`, "");
 
     for (let itemIndex = 0; itemIndex < CHECK_FIELD_ORDER.length; itemIndex += 1) {
@@ -2716,16 +2710,20 @@ async function buildFiscalYearExcelRecords(vehicle, driver, selectedMonthKey) {
   return records;
 }
 
-async function downloadExcel() {
+async function downloadExcel(options = {}) {
+  const {
+    fileName = buildExcelFileName(),
+    statusLabel = "スプレッドシート"
+  } = options;
   const vehicle = vehicleEl.value.trim();
   const driverIdentity = getDriverIdentity();
   if (!vehicle || !driverIdentity.storageValue) {
-    setStatus("Excel保存前に車番・運転者を選択してください", true);
+    setStatus(`${statusLabel}保存前に車番・運転者を選択してください`, true);
     return;
   }
 
   syncHolidayChecks();
-  setStatus("Excelファイルを作成しています...");
+  setStatus(`${statusLabel}ファイルを作成しています...`);
 
   const [JSZip, templateBuffer] = await Promise.all([
     getJsZipModule(),
@@ -2790,8 +2788,8 @@ async function downloadExcel() {
     mimeType: EXCEL_MIME_TYPE
   });
 
-  downloadBlob(excelBlob, buildExcelFileName());
-  setStatus("Excelファイルを保存しました");
+  downloadBlob(excelBlob, fileName);
+  setStatus(`${statusLabel}ファイルを保存しました`);
 }
 
 function buildCsvRows() {
@@ -3416,31 +3414,7 @@ document.getElementById("maintenanceManagerSlot").addEventListener("click", () =
 
 exportExcelBtnEl.addEventListener("click", () => {
   downloadExcel().catch((error) => {
-    setStatus(`Excel保存失敗: ${error.message}`, true);
-  });
-});
-
-exportCsvBtnEl.addEventListener("click", () => {
-  try {
-    downloadCsv();
-  } catch (error) {
-    setStatus(`CSV保存失敗: ${error.message}`, true);
-  }
-});
-
-importCsvBtnEl.addEventListener("click", () => {
-  csvImportInputEl.value = "";
-  csvImportInputEl.click();
-});
-
-csvImportInputEl.addEventListener("change", (event) => {
-  const [file] = event.target.files || [];
-  if (!file) {
-    return;
-  }
-
-  importCsvFile(file).catch((error) => {
-    setStatus(`CSV読込失敗: ${error.message}`, true);
+    setStatus(`スプレッドシート保存失敗: ${error.message}`, true);
   });
 });
 
