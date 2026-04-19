@@ -41,6 +41,53 @@
     flushing: false
   };
 
+  function isLocalDevelopmentHost() {
+    const host = window.location.hostname;
+    return host === "localhost"
+      || host === "127.0.0.1"
+      || /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)
+      || /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)
+      || /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host);
+  }
+
+  function shouldUseFirebaseEmulator() {
+    return window.APP_USE_FIREBASE_EMULATOR === true && isLocalDevelopmentHost();
+  }
+
+  function getRuntimeFirebaseConfig(config) {
+    return shouldUseFirebaseEmulator()
+      ? { ...(config || {}), ...(window.APP_FIREBASE_EMULATOR_CONFIG || {}) }
+      : (config || {});
+  }
+
+  function getFirebaseEmulatorRuntime() {
+    return {
+      authUrl: "http://127.0.0.1:9099",
+      firestoreHost: "127.0.0.1",
+      firestorePort: 8080,
+      ...(window.APP_FIREBASE_EMULATOR || {})
+    };
+  }
+
+  function connectCompatAuthEmulatorIfNeeded(auth) {
+    if (!shouldUseFirebaseEmulator() || !auth || typeof auth.useEmulator !== "function" || auth.__sinyuubuturyuuEmulatorConnected) {
+      return;
+    }
+
+    auth.useEmulator(getFirebaseEmulatorRuntime().authUrl, { disableWarnings: true });
+    auth.__sinyuubuturyuuEmulatorConnected = true;
+  }
+
+  function connectCompatFirestoreEmulatorIfNeeded(db) {
+    if (!shouldUseFirebaseEmulator() || !db || typeof db.useEmulator !== "function" || db.__sinyuubuturyuuEmulatorConnected) {
+      return;
+    }
+
+    const runtime = getFirebaseEmulatorRuntime();
+    db.useEmulator(runtime.firestoreHost, runtime.firestorePort);
+    db.__sinyuubuturyuuEmulatorConnected = true;
+  }
+
   function log(message, extra) {
     if (extra === undefined) {
       console.info("[FirebaseCloudSync]", message);
@@ -382,7 +429,7 @@
     if (state.readyPromise) return state.readyPromise;
 
     state.readyPromise = (async () => {
-      const config = window.APP_FIREBASE_CONFIG || {};
+      const config = getRuntimeFirebaseConfig(window.APP_FIREBASE_CONFIG || {});
       const required = ["apiKey", "authDomain", "projectId", "appId"];
       const missing = required.filter((key) => !String(config[key] || "").trim());
       if (missing.length > 0) {
@@ -397,6 +444,8 @@
 
       state.auth = state.firebase.auth();
       state.db = state.firebase.firestore();
+      connectCompatAuthEmulatorIfNeeded(state.auth);
+      connectCompatFirestoreEmulatorIfNeeded(state.db);
       state.deviceId = getOrCreateDeviceId();
 
       if (!state.auth.currentUser && typeof state.auth.authStateReady === "function") {
@@ -423,7 +472,7 @@
     if (state.directoryReadyPromise) return state.directoryReadyPromise;
 
     state.directoryReadyPromise = (async () => {
-      const config = window.APP_FIREBASE_DIRECTORY_CONFIG || {};
+      const config = getRuntimeFirebaseConfig(window.APP_FIREBASE_DIRECTORY_CONFIG || {});
       const syncOptions = window.APP_FIREBASE_DIRECTORY_SYNC_OPTIONS || {};
       const required = ["apiKey", "authDomain", "projectId", "appId"];
       const missing = required.filter((key) => !String(config[key] || "").trim());
@@ -434,6 +483,7 @@
       state.firebase = state.firebase || await ensureFirebaseSdk();
       const app = getOrCreateFirebaseApp(config, syncOptions.appName || "sinyuubuturyuu-directory");
       const auth = app.auth();
+      connectCompatAuthEmulatorIfNeeded(auth);
       if (!auth.currentUser && typeof auth.authStateReady === "function") {
         await auth.authStateReady();
       }
@@ -445,6 +495,7 @@
       state.directoryApp = app;
       state.directoryAuth = auth;
       state.directoryDb = app.firestore();
+      connectCompatFirestoreEmulatorIfNeeded(state.directoryDb);
       state.uid = auth.currentUser.uid || state.uid || "";
       state.deviceId = state.deviceId || getOrCreateDeviceId();
       return true;

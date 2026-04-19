@@ -24,6 +24,53 @@ const MONTHLY_COMPLETE_IMAGE_SRC = "./icons/monthly-complete.png";
 const MONTHLY_COMPLETE_IMAGE_ALT = "今月分はすべて完了しました。明日もよろしくお願いします。";
 const sharedSettings = window.SharedLauncherSettings || null;
 
+function isLocalDevelopmentHost() {
+  const host = window.location.hostname;
+  return host === "localhost"
+    || host === "127.0.0.1"
+    || /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)
+    || /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)
+    || /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host);
+}
+
+function shouldUseFirebaseEmulator() {
+  return window.APP_USE_FIREBASE_EMULATOR === true && isLocalDevelopmentHost();
+}
+
+function getRuntimeFirebaseConfig(config) {
+  return shouldUseFirebaseEmulator()
+    ? { ...(config || {}), ...(window.APP_FIREBASE_EMULATOR_CONFIG || {}) }
+    : (config || {});
+}
+
+function getFirebaseEmulatorRuntime() {
+  return {
+    authUrl: "http://127.0.0.1:9099",
+    firestoreHost: "127.0.0.1",
+    firestorePort: 8080,
+    ...(window.APP_FIREBASE_EMULATOR || {})
+  };
+}
+
+function connectAuthEmulatorIfNeeded(authModule, auth) {
+  if (!shouldUseFirebaseEmulator() || !authModule || typeof authModule.connectAuthEmulator !== "function" || auth.__sinyuubuturyuuEmulatorConnected) {
+    return;
+  }
+
+  authModule.connectAuthEmulator(auth, getFirebaseEmulatorRuntime().authUrl, { disableWarnings: true });
+  auth.__sinyuubuturyuuEmulatorConnected = true;
+}
+
+function connectFirestoreEmulatorIfNeeded(firestoreModule, db) {
+  if (!shouldUseFirebaseEmulator() || !firestoreModule || typeof firestoreModule.connectFirestoreEmulator !== "function" || db.__sinyuubuturyuuEmulatorConnected) {
+    return;
+  }
+
+  const runtime = getFirebaseEmulatorRuntime();
+  firestoreModule.connectFirestoreEmulator(db, runtime.firestoreHost, runtime.firestorePort);
+  db.__sinyuubuturyuuEmulatorConnected = true;
+}
+
 const INSPECTION_GROUPS = [
   {
     id: "brake",
@@ -576,8 +623,9 @@ async function createStore() {
 
     const app = typeof getApps === "function" && getApps().length
       ? getApp()
-      : initializeApp(firebaseConfig);
+      : initializeApp(getRuntimeFirebaseConfig(firebaseConfig));
     const auth = authModule.getAuth(app);
+    connectAuthEmulatorIfNeeded(authModule, auth);
     if (!auth.currentUser && typeof auth.authStateReady === "function") {
       await auth.authStateReady();
     }
@@ -585,6 +633,7 @@ async function createStore() {
       throw new Error("ログインしてください。");
     }
     const db = firestoreModule.getFirestore(app);
+    connectFirestoreEmulatorIfNeeded(firestoreModule, db);
     return createFirestoreStore(db, firestoreModule);
   } catch (error) {
     console.error(error);

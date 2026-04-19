@@ -2,12 +2,12 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Open Test Launcher",
+      "name": "Open Test Launcher without Firebase Emulator",
       "type": "pwa-chrome",
       "request": "launch",
-      "url": "http://127.0.0.1:8081",
+      "url": "http://127.0.0.1:8081/",
       "webRoot": "${workspaceFolder}",
-      "preLaunchTask": "Start Test Launcher"
+      "preLaunchTask": "Start Test Launcher without Firebase Emulator"
     }
   ]
 }

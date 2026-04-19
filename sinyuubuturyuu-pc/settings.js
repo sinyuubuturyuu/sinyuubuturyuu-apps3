@@ -61,6 +61,52 @@
     }
   };
 
+  function isLocalDevelopmentHost() {
+    const host = window.location.hostname;
+    return host === "localhost"
+      || host === "127.0.0.1"
+      || /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)
+      || /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)
+      || /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host);
+  }
+
+  function shouldUseFirebaseEmulator() {
+    return window.APP_USE_FIREBASE_EMULATOR === true && isLocalDevelopmentHost();
+  }
+
+  function getRuntimeFirebaseConfig(config) {
+    return shouldUseFirebaseEmulator()
+      ? Object.assign({}, config || {}, window.APP_FIREBASE_EMULATOR_CONFIG || {})
+      : (config || {});
+  }
+
+  function getFirebaseEmulatorRuntime() {
+    return Object.assign({
+      authUrl: "http://127.0.0.1:9099",
+      firestoreHost: "127.0.0.1",
+      firestorePort: 8080
+    }, window.APP_FIREBASE_EMULATOR || {});
+  }
+
+  function connectCompatAuthEmulatorIfNeeded(auth) {
+    if (!shouldUseFirebaseEmulator() || !auth || typeof auth.useEmulator !== "function" || auth.__sinyuubuturyuuEmulatorConnected) {
+      return;
+    }
+
+    auth.useEmulator(getFirebaseEmulatorRuntime().authUrl, { disableWarnings: true });
+    auth.__sinyuubuturyuuEmulatorConnected = true;
+  }
+
+  function connectCompatFirestoreEmulatorIfNeeded(db) {
+    if (!shouldUseFirebaseEmulator() || !db || typeof db.useEmulator !== "function" || db.__sinyuubuturyuuEmulatorConnected) {
+      return;
+    }
+
+    const runtime = getFirebaseEmulatorRuntime();
+    db.useEmulator(runtime.firestoreHost, runtime.firestorePort);
+    db.__sinyuubuturyuuEmulatorConnected = true;
+  }
+
   bindEvents();
   render();
   void initializeCloud();
@@ -536,7 +582,7 @@
       throw new Error("firebase_config_missing");
     }
 
-    return ensureDb(window.APP_FIREBASE_CONFIG, window.APP_FIREBASE_SYNC_OPTIONS || {}, null);
+    return ensureDb(getRuntimeFirebaseConfig(window.APP_FIREBASE_CONFIG), window.APP_FIREBASE_SYNC_OPTIONS || {}, null);
   }
 
   async function ensureDirectoryDb() {
@@ -546,7 +592,7 @@
 
     const syncOptions = window.APP_FIREBASE_DIRECTORY_SYNC_OPTIONS || {};
     return ensureDb(
-      window.APP_FIREBASE_DIRECTORY_CONFIG,
+      getRuntimeFirebaseConfig(window.APP_FIREBASE_DIRECTORY_CONFIG),
       syncOptions,
       syncOptions.appName || "sinyuubuturyuu-directory"
     );
@@ -555,6 +601,7 @@
   async function ensureDb(config, syncOptions, appName) {
     const app = getOrCreateFirebaseApp(config, appName);
     const auth = app.auth();
+    connectCompatAuthEmulatorIfNeeded(auth);
     const authApi = window.DevFirebaseAuth;
 
     if (authApi && typeof authApi.ensureCompatUser === "function") {
@@ -563,7 +610,9 @@
       throw new Error("ログインしてください。");
     }
 
-    return app.firestore();
+    const db = app.firestore();
+    connectCompatFirestoreEmulatorIfNeeded(db);
+    return db;
   }
 
   function getCollectionName() {

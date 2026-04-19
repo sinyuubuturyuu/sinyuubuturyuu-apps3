@@ -37,7 +37,7 @@
         SETTINGS: "settings"
       };
       const sharedSettings = window.SharedLauncherSettings || null;
-      const REFERENCE_FIREBASE_CONFIG = window.APP_FIREBASE_DIRECTORY_CONFIG || window.APP_FIREBASE_CONFIG || {};
+      const REFERENCE_FIREBASE_CONFIG = getRuntimeFirebaseConfig(window.APP_FIREBASE_DIRECTORY_CONFIG || window.APP_FIREBASE_CONFIG || {});
       const REFERENCE_SOURCE_KIND = Object.freeze({
         VEHICLES: "vehicles",
         DRIVERS: "drivers"
@@ -52,6 +52,53 @@
           docId: String((((window.APP_FIREBASE_DIRECTORY_SYNC_OPTIONS || {}).docIds || {}).drivers) || "monthly_tire_company_settings_backup_drivers_slot1").trim() || "monthly_tire_company_settings_backup_drivers_slot1"
         })
       });
+
+      function isLocalDevelopmentHost() {
+        const host = window.location.hostname;
+        return host === "localhost"
+          || host === "127.0.0.1"
+          || /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)
+          || /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)
+          || /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host);
+      }
+
+      function shouldUseFirebaseEmulator() {
+        return window.APP_USE_FIREBASE_EMULATOR === true && isLocalDevelopmentHost();
+      }
+
+      function getRuntimeFirebaseConfig(config) {
+        return shouldUseFirebaseEmulator()
+          ? { ...(config || {}), ...(window.APP_FIREBASE_EMULATOR_CONFIG || {}) }
+          : (config || {});
+      }
+
+      function getFirebaseEmulatorRuntime() {
+        return {
+          authUrl: "http://127.0.0.1:9099",
+          firestoreHost: "127.0.0.1",
+          firestorePort: 8080,
+          ...(window.APP_FIREBASE_EMULATOR || {})
+        };
+      }
+
+      function connectAuthEmulatorIfNeeded(authModule, auth) {
+        if (!shouldUseFirebaseEmulator() || !authModule || typeof authModule.connectAuthEmulator !== "function" || auth.__sinyuubuturyuuEmulatorConnected) {
+          return;
+        }
+
+        authModule.connectAuthEmulator(auth, getFirebaseEmulatorRuntime().authUrl, { disableWarnings: true });
+        auth.__sinyuubuturyuuEmulatorConnected = true;
+      }
+
+      function connectFirestoreEmulatorIfNeeded(firestoreModule, db) {
+        if (!shouldUseFirebaseEmulator() || !firestoreModule || typeof firestoreModule.connectFirestoreEmulator !== "function" || db.__sinyuubuturyuuEmulatorConnected) {
+          return;
+        }
+
+        const runtime = getFirebaseEmulatorRuntime();
+        firestoreModule.connectFirestoreEmulator(db, runtime.firestoreHost, runtime.firestorePort);
+        db.__sinyuubuturyuuEmulatorConnected = true;
+      }
 
       const DISPLAY_MAP_12 = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩", "⑪", "⑫"];
       const DISPLAY_MAP_10 = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
@@ -761,9 +808,14 @@
             ? appModule.getApp()
             : appModule.initializeApp(REFERENCE_FIREBASE_CONFIG);
 
+          const auth = authModule.getAuth(app);
+          const db = firestoreModule.getFirestore(app);
+          connectAuthEmulatorIfNeeded(authModule, auth);
+          connectFirestoreEmulatorIfNeeded(firestoreModule, db);
+
           return {
-            auth: authModule.getAuth(app),
-            db: firestoreModule.getFirestore(app),
+            auth,
+            db,
             firestoreModule
           };
         })().catch((error) => {

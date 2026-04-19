@@ -2,8 +2,8 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Start Test Launcher",
-      "detail": "Start the local launcher without VS Code debugger hooks",
+      "label": "Start Test Launcher without Firebase Emulator",
+      "detail": "Start the local launcher without Firebase Emulator. This can connect to production Firebase.",
       "type": "shell",
       "command": "powershell",
       "args": [
@@ -36,5 +36,3 @@
     }
   ]
 }
-
-

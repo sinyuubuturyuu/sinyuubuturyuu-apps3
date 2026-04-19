@@ -1,9 +1,10 @@
 ﻿import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getAuth, updateCurrentUser } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import { connectAuthEmulator, getAuth, updateCurrentUser } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   collection,
   deleteDoc,
   doc,
+  connectFirestoreEmulator,
   getDoc,
   getDocs,
   getFirestore,
@@ -53,7 +54,7 @@ const EXCEL_CUSTOM_STAMP_ASSETS = {
 let jsZipModulePromise = null;
 const stampSvgMarkupPromiseCache = new Map();
 
-const firebaseConfig = window.APP_FIREBASE_CONFIG || {
+const firebaseConfig = getRuntimeFirebaseConfig(window.APP_FIREBASE_CONFIG || {
   apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
   authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
   projectId: "sinyuubuturyuu-86aeb",
@@ -61,9 +62,9 @@ const firebaseConfig = window.APP_FIREBASE_CONFIG || {
   messagingSenderId: "213947378677",
   appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
   measurementId: "G-F9VYGCTHEV"
-};
+});
 
-const referenceFirebaseConfig = {
+const referenceFirebaseConfig = getRuntimeFirebaseConfig({
   apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
   authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
   projectId: "sinyuubuturyuu-86aeb",
@@ -71,7 +72,7 @@ const referenceFirebaseConfig = {
   messagingSenderId: "213947378677",
   appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
   measurementId: "G-F9VYGCTHEV"
-};
+});
 
 const FIRESTORE_COLLECTION = "getujinitijyoutenkenhyou";
 const VEHICLE_SETTINGS_DOC = {
@@ -83,6 +84,53 @@ const DRIVER_SETTINGS_DOC = {
   id: "monthly_tire_company_settings_backup_drivers_slot1"
 };
 const sharedSettings = window.SharedAppSettings || null;
+
+function isLocalDevelopmentHost() {
+  const host = window.location.hostname;
+  return host === "localhost"
+    || host === "127.0.0.1"
+    || /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)
+    || /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)
+    || /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host);
+}
+
+function shouldUseFirebaseEmulator() {
+  return window.APP_USE_FIREBASE_EMULATOR === true && isLocalDevelopmentHost();
+}
+
+function getRuntimeFirebaseConfig(config) {
+  return shouldUseFirebaseEmulator()
+    ? { ...(config || {}), ...(window.APP_FIREBASE_EMULATOR_CONFIG || {}) }
+    : (config || {});
+}
+
+function getFirebaseEmulatorRuntime() {
+  return {
+    authUrl: "http://127.0.0.1:9099",
+    firestoreHost: "127.0.0.1",
+    firestorePort: 8080,
+    ...(window.APP_FIREBASE_EMULATOR || {})
+  };
+}
+
+function connectAuthEmulatorIfNeeded(auth) {
+  if (!shouldUseFirebaseEmulator() || !auth || auth.__sinyuubuturyuuEmulatorConnected) {
+    return;
+  }
+
+  connectAuthEmulator(auth, getFirebaseEmulatorRuntime().authUrl, { disableWarnings: true });
+  auth.__sinyuubuturyuuEmulatorConnected = true;
+}
+
+function connectFirestoreEmulatorIfNeeded(database) {
+  if (!shouldUseFirebaseEmulator() || !database || database.__sinyuubuturyuuEmulatorConnected) {
+    return;
+  }
+
+  const runtime = getFirebaseEmulatorRuntime();
+  connectFirestoreEmulator(database, runtime.firestoreHost, runtime.firestorePort);
+  database.__sinyuubuturyuuEmulatorConnected = true;
+}
 const CHECK_FIELD_ORDER = [
   "brake_pedal",
   "brake_fluid",
@@ -210,6 +258,10 @@ const auth = getAuth(app);
 const referenceApp = firebaseConfig.projectId === referenceFirebaseConfig.projectId ? app : initializeApp(referenceFirebaseConfig, "reference-app");
 const referenceDb = getFirestore(referenceApp);
 const referenceAuth = getAuth(referenceApp);
+connectFirestoreEmulatorIfNeeded(db);
+connectAuthEmulatorIfNeeded(auth);
+connectFirestoreEmulatorIfNeeded(referenceDb);
+connectAuthEmulatorIfNeeded(referenceAuth);
 
 function normalizeOptionValue(value) {
   return typeof value === "string" ? value.trim() : "";
