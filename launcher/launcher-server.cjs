@@ -7,6 +7,20 @@ const rootDir = path.resolve(__dirname, "..");
 const requestedPort = Number(process.argv[2] || process.env.PORT || 8080);
 const host = "0.0.0.0";
 const maxPortAttempts = 20;
+const firebaseEmulatorEnabled = String(process.env.APP_USE_FIREBASE_EMULATOR || "").toLowerCase() === "true";
+const firebaseEmulatorConfig = {
+  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
+  authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
+  projectId: "sinyuubuturyuu-dev",
+  storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
+  messagingSenderId: "997788842966",
+  appId: "1:997788842966:web:e011e7340e2af863c40277"
+};
+const firebaseEmulatorRuntime = {
+  authUrl: "http://127.0.0.1:9099",
+  firestoreHost: "127.0.0.1",
+  firestorePort: 8080
+};
 
 const mimeTypes = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -49,6 +63,28 @@ function serveJson(response, payload) {
     },
     JSON.stringify(payload, null, 2)
   );
+}
+
+function injectFirebaseEmulatorRuntime(filePath, data) {
+  if (!firebaseEmulatorEnabled || path.extname(filePath).toLowerCase() !== ".html") {
+    return data;
+  }
+
+  const html = data.toString("utf8");
+  const marker = "</head>";
+  if (!html.includes(marker)) {
+    return data;
+  }
+
+  const payload = [
+    "<script>",
+    "window.APP_USE_FIREBASE_EMULATOR = true;",
+    `window.APP_FIREBASE_EMULATOR_CONFIG = ${JSON.stringify(firebaseEmulatorConfig)};`,
+    `window.APP_FIREBASE_EMULATOR = ${JSON.stringify(firebaseEmulatorRuntime)};`,
+    "</script>"
+  ].join("");
+
+  return Buffer.from(html.replace(marker, `${payload}\n${marker}`), "utf8");
 }
 
 function pickLanAddress() {
@@ -112,7 +148,7 @@ const server = http.createServer((request, response) => {
 
       const extension = path.extname(filePath).toLowerCase();
       const contentType = mimeTypes.get(extension) || "application/octet-stream";
-      send(response, 200, { "Content-Type": contentType, "Cache-Control": "no-store" }, data);
+      send(response, 200, { "Content-Type": contentType, "Cache-Control": "no-store" }, injectFirebaseEmulatorRuntime(filePath, data));
     });
   });
 });
@@ -133,8 +169,20 @@ function startServer(port, attemptsRemaining) {
     const address = server.address();
     const activePort = address && typeof address === "object" ? address.port : port;
     const localhostUrl = `http://127.0.0.1:${activePort}`;
+    const mobileAppUrl = `${localhostUrl}/sinyuubuturyuu/index.html`;
+    const pcAppUrl = `${localhostUrl}/sinyuubuturyuu-pc/index.html`;
     const lanAddress = pickLanAddress();
+    const modeLabel = firebaseEmulatorEnabled ? "Firebase Emulator mode" : "Normal Firebase mode";
+
     console.log(`Launcher server running at ${localhostUrl}`);
+    console.log(`Launcher mode: ${modeLabel}`);
+    console.log(`Open launcher: ${localhostUrl}/`);
+    console.log(`Open mobile app: ${mobileAppUrl}`);
+    console.log(`Open PC app: ${pcAppUrl}`);
+    if (firebaseEmulatorEnabled) {
+      console.log("Firebase emulator runtime injection enabled.");
+      console.log(`Firebase Emulator target: ${mobileAppUrl}`);
+    }
     if (lanAddress) {
       console.log(`LAN access URL: http://${lanAddress}:${activePort}`);
     }

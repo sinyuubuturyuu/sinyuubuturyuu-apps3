@@ -6,7 +6,8 @@
   let runtimePromise = null;
 
   function getFirebaseConfig() {
-    return window.APP_FIREBASE_CONFIG || window.APP_FIREBASE_DIRECTORY_CONFIG || {};
+    const config = window.APP_FIREBASE_CONFIG || window.APP_FIREBASE_DIRECTORY_CONFIG || {};
+    return shouldUseFirebaseEmulator() ? { ...config, ...getFirebaseEmulatorConfig() } : config;
   }
 
   function hasFirebaseConfig(config) {
@@ -14,6 +15,39 @@
       const value = config && config[key];
       return typeof value === "string" && value.trim();
     });
+  }
+
+  function isLocalDevelopmentHost() {
+    const host = window.location.hostname;
+    return host === "localhost"
+      || host === "127.0.0.1"
+      || /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)
+      || /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)
+      || /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host);
+  }
+
+  function shouldUseFirebaseEmulator() {
+    return window.APP_USE_FIREBASE_EMULATOR === true && isLocalDevelopmentHost();
+  }
+
+  function getFirebaseEmulatorConfig() {
+    return window.APP_FIREBASE_EMULATOR_CONFIG || {};
+  }
+
+  function getFirebaseEmulatorRuntime() {
+    return {
+      authUrl: "http://127.0.0.1:9099",
+      ...(window.APP_FIREBASE_EMULATOR || {})
+    };
+  }
+
+  function connectAuthEmulatorIfNeeded(authModule, auth) {
+    if (!shouldUseFirebaseEmulator() || !authModule || typeof authModule.connectAuthEmulator !== "function" || auth.__sinyuubuturyuuEmulatorConnected) {
+      return;
+    }
+
+    authModule.connectAuthEmulator(auth, getFirebaseEmulatorRuntime().authUrl, { disableWarnings: true });
+    auth.__sinyuubuturyuuEmulatorConnected = true;
   }
 
   async function ensureRuntime() {
@@ -36,9 +70,12 @@
         ? getApp()
         : initializeApp(config);
 
+      const auth = authModule.getAuth(app);
+      connectAuthEmulatorIfNeeded(authModule, auth);
+
       return {
         app,
-        auth: authModule.getAuth(app),
+        auth,
         authModule
       };
     })().catch((error) => {

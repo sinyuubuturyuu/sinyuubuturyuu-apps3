@@ -20,7 +20,7 @@
     summaryPrefix: "driver_points_summary",
     eventPrefix: "driver_points_event"
   });
-  const FIREBASE_CONFIG = Object.freeze({
+  const FIREBASE_CONFIG = Object.freeze(getRuntimeFirebaseConfig({
     apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
     authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
     projectId: "sinyuubuturyuu-86aeb",
@@ -28,7 +28,7 @@
     messagingSenderId: "213947378677",
     appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
     measurementId: "G-F9VYGCTHEV"
-  });
+  }));
 
   const uiState = {
     mounted: false,
@@ -46,6 +46,43 @@
 
   function normalizeText(value) {
     return String(value ?? "").trim();
+  }
+
+  function isLocalDevelopmentHost() {
+    const host = window.location.hostname;
+    return host === "localhost"
+      || host === "127.0.0.1"
+      || /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)
+      || /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)
+      || /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host);
+  }
+
+  function shouldUseFirebaseEmulator() {
+    return window.APP_USE_FIREBASE_EMULATOR === true && isLocalDevelopmentHost();
+  }
+
+  function getRuntimeFirebaseConfig(config) {
+    return shouldUseFirebaseEmulator()
+      ? { ...(config || {}), ...(window.APP_FIREBASE_EMULATOR_CONFIG || {}) }
+      : (config || {});
+  }
+
+  function getFirebaseEmulatorRuntime() {
+    return {
+      firestoreHost: "127.0.0.1",
+      firestorePort: 8080,
+      ...(window.APP_FIREBASE_EMULATOR || {})
+    };
+  }
+
+  function connectFirestoreEmulatorIfNeeded(firestoreModule, db) {
+    if (!shouldUseFirebaseEmulator() || !firestoreModule || typeof firestoreModule.connectFirestoreEmulator !== "function" || db.__sinyuubuturyuuEmulatorConnected) {
+      return;
+    }
+
+    const runtime = getFirebaseEmulatorRuntime();
+    firestoreModule.connectFirestoreEmulator(db, runtime.firestoreHost, runtime.firestorePort);
+    db.__sinyuubuturyuuEmulatorConnected = true;
   }
 
   function normalizeDriverName(value) {
@@ -266,8 +303,11 @@
         throw new Error("ログインしてください。");
       }
 
+      const db = firestoreModule.getFirestore(app);
+      connectFirestoreEmulatorIfNeeded(firestoreModule, db);
+
       return {
-        db: firestoreModule.getFirestore(app),
+        db,
         firestoreModule
       };
     })().catch((error) => {
