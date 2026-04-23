@@ -9,7 +9,7 @@ const host = "0.0.0.0";
 const maxPortAttempts = 20;
 const firebaseEmulatorEnabled = String(process.env.APP_USE_FIREBASE_EMULATOR || "").toLowerCase() === "true";
 const firebaseEmulatorConfig = {
-  apiKey: "",
+  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
   authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
   projectId: "sinyuubuturyuu-dev",
   storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",

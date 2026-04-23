@@ -21,7 +21,7 @@
     eventPrefix: "driver_points_event"
   });
   const FIREBASE_CONFIG = Object.freeze(getRuntimeFirebaseConfig({
-    apiKey: "",
+    apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
     authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
     projectId: "sinyuubuturyuu-86aeb",
     storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",

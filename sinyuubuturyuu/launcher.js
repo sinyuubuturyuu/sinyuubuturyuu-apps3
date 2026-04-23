@@ -7,7 +7,7 @@
 
 const MONTHLY_COMPLETE_IMAGE_SRC = "./getujitiretenkenhyou/icons/monthly-complete.png";
 const REFERENCE_FIREBASE_CONFIG = Object.freeze(getRuntimeFirebaseConfig(window.APP_FIREBASE_DIRECTORY_CONFIG || {
-  apiKey: "",
+  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
   authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
   projectId: "sinyuubuturyuu-86aeb",
   storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
@@ -40,7 +40,7 @@ const DAILY_INSPECTION_COMPLETE_IMAGE_SRC = "./getujinitijyoutenkenhyou/icons/mo
 const DAILY_INSPECTION_COMPLETE_IMAGE_ALT = "Daily inspection complete for this month.";
 const LAUNCH_RETRY_MESSAGE = "通信状態を確認して、もう一度タップしてください。";
 const DAILY_INSPECTION_FIREBASE_CONFIG = Object.freeze(getRuntimeFirebaseConfig({
-  apiKey: "",
+  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
   authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
   projectId: "sinyuubuturyuu-86aeb",
   storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
