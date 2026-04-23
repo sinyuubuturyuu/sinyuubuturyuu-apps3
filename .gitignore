@@ -1,5 +1,6 @@
 firebase-emulators.err.log
 firebase-emulators.out.log
+firebase-debug.log
 firestore-debug.log
 http-server.err.log
 http-server.out.log
