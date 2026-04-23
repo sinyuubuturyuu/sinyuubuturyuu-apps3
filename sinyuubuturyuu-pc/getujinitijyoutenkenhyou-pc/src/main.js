@@ -59,7 +59,7 @@ let jsZipModulePromise = null;
 const stampSvgMarkupPromiseCache = new Map();
 
 const firebaseConfig = getRuntimeFirebaseConfig(window.APP_FIREBASE_CONFIG || {
-  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
+  apiKey: "",
   authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
   projectId: "sinyuubuturyuu-86aeb",
   storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
@@ -69,7 +69,7 @@ const firebaseConfig = getRuntimeFirebaseConfig(window.APP_FIREBASE_CONFIG || {
 });
 
 const referenceFirebaseConfig = getRuntimeFirebaseConfig({
-  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
+  apiKey: "",
   authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
   projectId: "sinyuubuturyuu-86aeb",
   storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",

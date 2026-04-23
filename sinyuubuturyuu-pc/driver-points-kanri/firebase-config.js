@@ -2,7 +2,7 @@
   "use strict";
 
   window.DRIVER_POINTS_FIREBASE_CONFIG = {
-    apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
+    apiKey: "",
     authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
     projectId: "sinyuubuturyuu-86aeb",
     storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",

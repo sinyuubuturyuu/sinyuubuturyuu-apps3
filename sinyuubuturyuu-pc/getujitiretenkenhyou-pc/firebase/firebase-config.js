@@ -5,7 +5,7 @@
   "use strict";
 
   window.APP_FIREBASE_CONFIG = {
-    apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
+    apiKey: "",
     authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
     projectId: "sinyuubuturyuu-86aeb",
     appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
@@ -32,7 +32,7 @@
   // Fill the config after creating the employee directory project,
   // then set enabled=true to dual-write from settings.html.
   window.APP_FIREBASE_DIRECTORY_CONFIG = {
-    apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
+    apiKey: "",
     authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
     projectId: "sinyuubuturyuu-86aeb",
     storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
