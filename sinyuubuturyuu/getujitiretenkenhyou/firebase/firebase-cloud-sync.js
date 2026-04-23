@@ -452,7 +452,7 @@
         await state.auth.authStateReady();
       }
       if (!state.auth.currentUser) {
-        warn("Firebase auth user is missing. Sign in before using cloud sync.");
+        log("Firebase auth user is missing. Cloud sync will wait until sign in.");
         return false;
       }
 
@@ -488,7 +488,7 @@
         await auth.authStateReady();
       }
       if (!auth.currentUser) {
-        warn("Directory auth user is missing. Sign in before using directory sync.");
+        log("Directory auth user is missing. Directory sync will wait until sign in.");
         return false;
       }
 
