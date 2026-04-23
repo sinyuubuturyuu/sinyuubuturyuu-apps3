@@ -1087,6 +1087,23 @@
         && basic.truckType === targetBasic.truckType;
     };
     const requestedMonthSet = new Set(requestedMonths);
+    const applyMonthFilter = (query, months) => (
+      months.length === 1
+        ? query.where("inspectionMonth", "==", months[0])
+        : query.where("inspectionMonth", "in", months)
+    );
+    const buildSubmittedMonthsQuery = (months, withTargetFilters) => {
+      let query = state.db.collection(state.options.collection);
+      if (withTargetFilters) {
+        if (companyCode) {
+          query = query.where("companyCode", "==", companyCode);
+        }
+        if (targetBasicSignature) {
+          query = query.where("basicSignature", "==", targetBasicSignature);
+        }
+      }
+      return applyMonthFilter(query, months);
+    };
     const collectSubmittedMonths = (rows, submitted, monthFilter = requestedMonthSet) => {
       rows.forEach((row) => {
         if (!hasState(row) || !sameCompany(row) || !sameLookupTarget(row)) return;
@@ -1101,11 +1118,16 @@
       const submitted = new Set();
       for (let index = 0; index < requestedMonths.length; index += 10) {
         const chunk = requestedMonths.slice(index, index + 10);
-        let query = state.db.collection(state.options.collection);
-        query = chunk.length === 1
-          ? query.where("inspectionMonth", "==", chunk[0])
-          : query.where("inspectionMonth", "in", chunk);
-        const snap = await query.limit(240).get();
+        let snap = null;
+        try {
+          snap = await buildSubmittedMonthsQuery(chunk, true).limit(240).get();
+        } catch (error) {
+          if (toFirestoreReason(error, "read_failed") !== "failed_precondition") {
+            throw error;
+          }
+          warn("Submitted months filtered query requires an index; falling back to month scan", error);
+          snap = await buildSubmittedMonthsQuery(chunk, false).limit(400).get();
+        }
         if (!snap || snap.empty) continue;
         const rows = [];
         snap.forEach((doc) => {
@@ -1117,13 +1139,16 @@
       if (submitted.size < requestedMonths.length) {
         const remainingMonths = requestedMonths.filter((monthKey) => !submitted.has(monthKey));
         if (remainingMonths.length) {
-          const fallbackSnap = await state.db.collection(state.options.collection).limit(400).get();
-          if (fallbackSnap && !fallbackSnap.empty) {
-            const fallbackRows = [];
-            fallbackSnap.forEach((doc) => {
-              fallbackRows.push(doc.data() || {});
-            });
-            collectSubmittedMonths(fallbackRows, submitted, new Set(remainingMonths));
+          for (let index = 0; index < remainingMonths.length; index += 10) {
+            const chunk = remainingMonths.slice(index, index + 10);
+            const fallbackSnap = await buildSubmittedMonthsQuery(chunk, false).limit(400).get();
+            if (fallbackSnap && !fallbackSnap.empty) {
+              const fallbackRows = [];
+              fallbackSnap.forEach((doc) => {
+                fallbackRows.push(doc.data() || {});
+              });
+              collectSubmittedMonths(fallbackRows, submitted, new Set(chunk));
+            }
           }
         }
       }
