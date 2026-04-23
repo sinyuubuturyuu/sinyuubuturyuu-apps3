@@ -1291,6 +1291,15 @@ function escapeXmlText(value) {
     .replace(/'/g, "&apos;");
 }
 
+function escapeHtmlText(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function buildHankoSvgMarkup(name, size = "small") {
   const trimmedName = String(name || "").trim();
   if (!trimmedName) {
@@ -1383,7 +1392,7 @@ async function renderSvgToPngArrayBuffer(svgMarkup, width, height) {
 
 function createHanko(name, size = "small") {
   if (!name) return "";
-  return `<div class="hanko hanko-${size}"><span>${name}</span></div>`;
+  return `<div class="hanko hanko-${size}"><span>${escapeHtmlText(name)}</span></div>`;
 }
 
 function setStamp(target, value) {

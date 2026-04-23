@@ -1,4 +1,23 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "getujitiretenkenhyou",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "companyCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "basicSignature",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "inspectionMonth",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }

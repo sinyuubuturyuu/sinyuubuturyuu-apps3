@@ -1,4 +1,4 @@
-const APP_VERSION = "20260322-1";
+const APP_VERSION = "20260423b";
 const CACHE_NAME = `monthly-inspection-shell-${APP_VERSION}`;
 const APP_SHELL = [
   "./",
@@ -6,7 +6,7 @@ const APP_SHELL = [
   `./styles.css?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./firebase-config.js?v=${APP_VERSION}`,
-  "../driver-points/driver-points.js?v=20260401-1",
+  "../driver-points/driver-points.js?v=20260423b",
   `./manifest.webmanifest?v=${APP_VERSION}`,
   "./icons/icon-192.png",
   "./icons/icon-512.png",

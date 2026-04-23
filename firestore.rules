@@ -2,10 +2,9 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ローカルEmulator用: ローカル検証を優先するため全読み書きを許可します。
-    // 本番Firestoreルールとしては使用しないでください。
+    // 本番/ローカル共通: Firestore はログイン済みユーザーのみ許可します。
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if request.auth != null;
     }
   }
 }

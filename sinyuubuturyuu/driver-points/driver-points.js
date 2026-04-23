@@ -34,6 +34,7 @@
     mounted: false,
     badgeRefreshToken: 0,
     observer: null,
+    authObserverBound: false,
     refreshTimer: 0,
     pendingRefreshOptions: null,
     lastBadgeSyncAt: 0,
@@ -202,6 +203,52 @@
     });
   }
 
+  function buildAuthRequiredError() {
+    const error = new Error("Firebase auth user is missing for driver points.");
+    error.code = "auth/missing-user";
+    return error;
+  }
+
+  function isExpectedReadBlock(error) {
+    const code = String(error && error.code || "");
+    const message = String(error && error.message || "");
+    return code === "auth/missing-user"
+      || code === "permission-denied"
+      || message.includes("Firebase auth user is missing for driver points")
+      || message.includes("Missing or insufficient permissions");
+  }
+
+  async function waitForSignedInUser(authApi, authModule, auth) {
+    if (authApi && typeof authApi.getCurrentUser === "function") {
+      return authApi.getCurrentUser({ waitMs: 5000 });
+    }
+
+    if (auth.currentUser) {
+      return auth.currentUser;
+    }
+
+    if (typeof auth.authStateReady === "function") {
+      await auth.authStateReady();
+      return auth.currentUser || null;
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let unsubscribe = () => {};
+      const finish = (user) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        unsubscribe();
+        resolve(user || null);
+      };
+
+      unsubscribe = authModule.onAuthStateChanged(auth, (user) => finish(user), () => finish(null));
+      window.setTimeout(() => finish(auth.currentUser || null), 5000);
+    });
+  }
+
   function getFeatureState() {
     ensureFeatureStateInitialized();
     const value = window.localStorage.getItem(FEATURE_STORAGE_KEY);
@@ -296,11 +343,9 @@
         auth = authModule.getAuth(app);
       }
 
-      if (!auth.currentUser && typeof auth.authStateReady === "function") {
-        await auth.authStateReady();
-      }
-      if (!auth.currentUser) {
-        throw new Error("ログインしてください。");
+      const user = await waitForSignedInUser(authApi, authModule, auth);
+      if (!user) {
+        throw buildAuthRequiredError();
       }
 
       const db = firestoreModule.getFirestore(app);
@@ -859,7 +904,9 @@
       elements.badge.title = `${summary.vehicleNumber} / ${summary.driverName} のポイント`;
       uiState.lastBadgeSyncAt = Date.now();
     } catch (error) {
-      console.warn("Failed to load driver points:", error);
+      if (!isExpectedReadBlock(error)) {
+        console.warn("Failed to load driver points:", error);
+      }
       if (refreshToken !== uiState.badgeRefreshToken) {
         return;
       }
@@ -883,6 +930,30 @@
     }
   }
 
+  function observeAuthState() {
+    if (uiState.authObserverBound) {
+      return;
+    }
+
+    const authApi = window.DevFirebaseAuth;
+    if (!authApi || typeof authApi.onChange !== "function") {
+      return;
+    }
+
+    uiState.authObserverBound = true;
+    void authApi.onChange((user) => {
+      runtimeState.promise = null;
+      if (user) {
+        requestBadgeRefresh({ force: true, reason: "auth_change", delayMs: 0 });
+        return;
+      }
+
+      hideBadge();
+    }).catch(() => {
+      uiState.authObserverBound = false;
+    });
+  }
+
   function syncLauncherUi(options = {}) {
     renderSettingsSection();
     requestBadgeRefresh(options);
@@ -898,6 +969,7 @@
     ensureSettingsSection();
     renderSettingsSection();
     observeLauncherSelection();
+    observeAuthState();
     requestBadgeRefresh({ force: true, reason: "mount", delayMs: 0 });
   }
 
