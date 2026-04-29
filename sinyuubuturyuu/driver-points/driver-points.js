@@ -749,13 +749,10 @@
     const field = document.createElement("label");
     field.className = "field";
 
-    const label = document.createElement("span");
-    label.textContent = "機能切替";
-    field.appendChild(label);
-
     const toggle = document.createElement("select");
     toggle.id = "driverPointsFeatureToggle";
     toggle.className = "field-select";
+    toggle.setAttribute("aria-label", "ポイント付与機能切替");
     toggle.innerHTML = [
       '<option value="off">OFF</option>',
       '<option value="on">ON</option>'
@@ -807,11 +804,6 @@
     const summary = head && head.querySelector("p");
     if (summary) {
       summary.remove();
-    }
-
-    const label = section.querySelector(".field > span");
-    if (label) {
-      label.textContent = "ポイント付与";
     }
 
     let helpButton = section.querySelector("#driverPointsHelpButton");
