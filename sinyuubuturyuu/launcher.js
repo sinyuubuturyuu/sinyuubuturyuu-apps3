@@ -342,7 +342,7 @@ async function handleLoginSubmit() {
   }
 
   state.auth.busy = true;
-  setAuthStatus("ログインしています。", false);
+  setAuthStatus("", false);
   renderAll();
 
   try {
@@ -363,7 +363,7 @@ async function handleLogout() {
   }
 
   state.auth.busy = true;
-  setAuthStatus("ログアウトしています。", false);
+  setAuthStatus("", false);
   renderAll();
 
   try {
