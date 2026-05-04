@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const LATEST_PC_APP_VERSION = "20260419a";
+  const LATEST_PC_APP_VERSION = "20260504a";
   const VERSION_PARAM = "v";
 
   function getVersion(fallbackVersion) {

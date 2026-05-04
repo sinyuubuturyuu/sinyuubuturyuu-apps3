@@ -932,6 +932,53 @@ function monthRecordHasContent(recordState = {}) {
   );
 }
 
+function getDayInspectionValues(recordState = {}, day) {
+  const checks = recordState.checks || {};
+  const values = [];
+
+  for (let itemIndex = 0; itemIndex < getInspectionItemCount(); itemIndex += 1) {
+    const rawValue = checks[checkKey(itemIndex, day)];
+    const normalizedValue = rawValue === "×" ? "☓" : rawValue;
+    values.push(CHECK_STATES.includes(normalizedValue) ? normalizedValue : "");
+  }
+
+  return values;
+}
+
+function dayHasAnyInspectionInput(recordState = {}, day) {
+  return getDayInspectionValues(recordState, day).some((value) => value && value !== HOLIDAY_MARK);
+}
+
+function isDayInspectionComplete(recordState = {}, day) {
+  return getDayInspectionValues(recordState, day).every((value) => value && value !== HOLIDAY_MARK);
+}
+
+function collectIncompleteInspectionDays(monthKey, recordState = {}) {
+  const { year, month } = parseYearMonthKey(monthKey);
+  const daysInMonth = getDaysInMonth(year, month);
+  const holidayDays = new Set(mergeHolidayDays(recordState.holidayDays || [], recordState.checks || {}, daysInMonth));
+  const incompleteDays = [];
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    if (holidayDays.has(day)) {
+      continue;
+    }
+    if (dayHasAnyInspectionInput(recordState, day) && !isDayInspectionComplete(recordState, day)) {
+      incompleteDays.push(day);
+    }
+  }
+
+  return incompleteDays;
+}
+
+function buildIncompleteInspectionSaveMessage(entries) {
+  const details = entries
+    .map((entry) => `${entry.monthKey}: ${entry.days.map((day) => `${day}日`).join("、")}`)
+    .join("\n");
+
+  return `未完了の点検項目があります。\n${details}\n\nすべて入力するか、休みの日は休日設定してください。`;
+}
+
 function renderMonthTabs() {
   if (!monthTabsEl) {
     return;
@@ -1250,9 +1297,9 @@ function syncHolidayChecks() {
   state.holidayDays.forEach((day) => applyHolidayChecks(day));
 }
 
-function markHolidayForDay(day) {
+async function markHolidayForDay(day) {
   if (isHolidayDay(day)) {
-    if (!window.confirm(`${day}日の休日設定を解除しますか？`)) {
+    if (!await confirmInPage(`${day}日の休日設定を解除しますか？`)) {
       return;
     }
 
@@ -1265,7 +1312,7 @@ function markHolidayForDay(day) {
     return;
   }
 
-  if (!window.confirm(`${day}日を休日にしますか？`)) {
+  if (!await confirmInPage(`${day}日を休日にしますか？`)) {
     return;
   }
 
@@ -1473,7 +1520,7 @@ function renderDays() {
     dateTh.textContent = String(day);
     dateTh.title = `${day}日を休日に設定`;
     dateTh.addEventListener("click", () => {
-      markHolidayForDay(day);
+      void markHolidayForDay(day);
     });
     datesRowEl.append(dateTh);
 
@@ -1483,7 +1530,7 @@ function renderDays() {
     dowTh.textContent = toWeekdayLabel(year, month, day);
     dowTh.title = `${day}日を休日に設定`;
     dowTh.addEventListener("click", () => {
-      markHolidayForDay(day);
+      void markHolidayForDay(day);
     });
     if (isHolidayDay(day)) {
       dateTh.classList.add("is-holiday");
@@ -1506,13 +1553,13 @@ function printSheet() {
 }
 
 function showHelp() {
-  window.alert(
-    [
-      "日付を押すと休日の設定になります。もう一度押すと解除できます。",
-      "読込、保存はFirebaseのデータに読込、保存されます。",
-      "印刷はA4横で印刷されます。"
-    ].join("\n")
-  );
+  const message = [
+    "日付を押すと休日の設定になります。もう一度押すと解除できます。",
+    "読込、保存はFirebaseのデータに読込、保存されます。",
+    "印刷はA4横で印刷されます。"
+  ].join("\n");
+  setStatus(message);
+  void alertInPage(message);
 }
 
 function renderBody() {
@@ -1593,6 +1640,132 @@ function clearLoadedDocId() {
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
   statusEl.style.color = isError ? "#b00020" : "#1e2a35";
+}
+
+function confirmInPage(message) {
+  if (typeof HTMLDialogElement !== "function") {
+    setStatus(message, true);
+    return Promise.resolve(false);
+  }
+
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.setAttribute("aria-label", "確認");
+    dialog.style.maxWidth = "min(520px, calc(100vw - 32px))";
+    dialog.style.border = "1px solid #d0d7de";
+    dialog.style.borderRadius = "8px";
+    dialog.style.padding = "0";
+    dialog.style.boxShadow = "0 20px 48px rgba(15, 23, 42, 0.24)";
+
+    const panel = document.createElement("div");
+    panel.style.padding = "20px";
+
+    const title = document.createElement("h2");
+    title.textContent = "確認";
+    title.style.margin = "0 0 12px";
+    title.style.fontSize = "18px";
+
+    const body = document.createElement("p");
+    body.textContent = message;
+    body.style.whiteSpace = "pre-wrap";
+    body.style.margin = "0 0 18px";
+    body.style.lineHeight = "1.6";
+
+    const actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.justifyContent = "flex-end";
+    actions.style.gap = "8px";
+
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.textContent = "キャンセル";
+
+    const okButton = document.createElement("button");
+    okButton.type = "button";
+    okButton.textContent = "OK";
+    okButton.style.fontWeight = "700";
+
+    actions.append(cancelButton, okButton);
+    panel.append(title, body, actions);
+    dialog.append(panel);
+    document.body.append(dialog);
+
+    function closeDialog(result) {
+      dialog.close();
+      dialog.remove();
+      resolve(result);
+    }
+
+    cancelButton.addEventListener("click", () => closeDialog(false));
+    okButton.addEventListener("click", () => closeDialog(true));
+    dialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeDialog(false);
+    });
+
+    dialog.showModal();
+    okButton.focus();
+  });
+}
+
+function alertInPage(message) {
+  if (typeof HTMLDialogElement !== "function") {
+    setStatus(message, true);
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.setAttribute("aria-label", "お知らせ");
+    dialog.style.maxWidth = "min(520px, calc(100vw - 32px))";
+    dialog.style.border = "1px solid #d0d7de";
+    dialog.style.borderRadius = "8px";
+    dialog.style.padding = "0";
+    dialog.style.boxShadow = "0 20px 48px rgba(15, 23, 42, 0.24)";
+
+    const panel = document.createElement("div");
+    panel.style.padding = "20px";
+
+    const title = document.createElement("h2");
+    title.textContent = "お知らせ";
+    title.style.margin = "0 0 12px";
+    title.style.fontSize = "18px";
+
+    const body = document.createElement("p");
+    body.textContent = message;
+    body.style.whiteSpace = "pre-wrap";
+    body.style.margin = "0 0 18px";
+    body.style.lineHeight = "1.6";
+
+    const actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.justifyContent = "flex-end";
+
+    const okButton = document.createElement("button");
+    okButton.type = "button";
+    okButton.textContent = "OK";
+    okButton.style.fontWeight = "700";
+
+    actions.append(okButton);
+    panel.append(title, body, actions);
+    dialog.append(panel);
+    document.body.append(dialog);
+
+    function closeDialog() {
+      dialog.close();
+      dialog.remove();
+      resolve();
+    }
+
+    okButton.addEventListener("click", closeDialog);
+    dialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeDialog();
+    });
+
+    dialog.showModal();
+    okButton.focus();
+  });
 }
 
 function buildRecordKey(month, vehicle, driver) {
@@ -3328,8 +3501,24 @@ async function saveRecord() {
     return;
   }
 
+  const incompleteEntries = fiscalEntries
+    .map((entry) => {
+      const monthState = state.recordsByMonth[entry.monthKey] || createEmptyMonthRecordState(entry.monthKey);
+      return {
+        monthKey: entry.monthKey,
+        days: collectIncompleteInspectionDays(entry.monthKey, monthState)
+      };
+    })
+    .filter((entry) => entry.days.length);
+
+  if (incompleteEntries.length) {
+    const message = buildIncompleteInspectionSaveMessage(incompleteEntries);
+    await alertInPage(message);
+    return;
+  }
+
   const saveLocationMessage = `保存先: Firestore / ${FIRESTORE_COLLECTION}\n対象年度: ${fiscalEntries[0]?.monthKey} 〜 ${fiscalEntries[fiscalEntries.length - 1]?.monthKey}\n一致キー: ${vehicle} / ${driver}`;
-  const accepted = window.confirm(`保存先を確認してください。\n\n${saveLocationMessage}\n\nこの年度の編集内容を保存しますか？`);
+  const accepted = await confirmInPage(`保存先を確認してください。\n\n${saveLocationMessage}\n\nこの年度の編集内容を保存しますか？`);
   if (!accepted) {
     setStatus("保存をキャンセルしました");
     return;

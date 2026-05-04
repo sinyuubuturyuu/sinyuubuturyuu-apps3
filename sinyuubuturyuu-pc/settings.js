@@ -571,6 +571,7 @@
     }
 
     await refreshBackups();
+    await syncDriverReadingsFromBackup();
 
     if (state.directoryEnabled && !state.directoryDb && state.db) {
       setGlobalStatus("社員名簿 Firebase に接続できないため、既存バックアップを使います。", false);
@@ -747,6 +748,68 @@
     }
 
     render();
+  }
+
+  async function syncDriverReadingsFromBackup() {
+    if (!state.cloudReady) {
+      return;
+    }
+
+    try {
+      const backup = await readBackupRecord(DRIVER_BACKUP);
+      if (!backup || !backup.profiles.length) {
+        return;
+      }
+
+      const localProfiles = Array.isArray(state.shared.userProfiles) ? state.shared.userProfiles : [];
+      if (!localProfiles.length) {
+        state.shared = sharedSettings.saveUserProfiles(backup.profiles);
+        render();
+        return;
+      }
+
+      const backupByLoginId = new Map();
+      const backupByDriverName = new Map();
+      backup.profiles.forEach(function (profile) {
+        const loginId = sharedSettings.normalizeLoginId(profile.loginId);
+        const driverName = sharedSettings.normalizeDriverName(profile.driverName);
+        if (loginId) {
+          backupByLoginId.set(loginId, profile);
+        }
+        if (driverName) {
+          backupByDriverName.set(driverName, profile);
+        }
+      });
+
+      let changed = false;
+      const nextProfiles = localProfiles.map(function (profile) {
+        if (profile.driverReading) {
+          return profile;
+        }
+
+        const loginId = sharedSettings.normalizeLoginId(profile.loginId);
+        const driverName = sharedSettings.normalizeDriverName(profile.driverName);
+        const backupProfile = (loginId ? backupByLoginId.get(loginId) : null)
+          || (driverName ? backupByDriverName.get(driverName) : null);
+        const driverReading = sharedSettings.normalizeDriverReading(backupProfile && backupProfile.driverReading);
+        if (!driverReading) {
+          return profile;
+        }
+
+        changed = true;
+        return {
+          ...profile,
+          driverReading: driverReading
+        };
+      });
+
+      if (changed) {
+        state.shared = sharedSettings.saveUserProfiles(nextProfiles);
+        render();
+      }
+    } catch (error) {
+      console.warn("Failed to sync driver readings from backup:", error);
+    }
   }
 
   function normalizeBackupValues(definition, data) {
