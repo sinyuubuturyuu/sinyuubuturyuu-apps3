@@ -19,7 +19,7 @@ const INSPECTION_GUIDE_MESSAGE = `未入力日のみ表示しています。
 タップすると空欄 → レ → × → ▲と入力されます。　
 休みの日は日付を押して休みとしてください。もう一度押すと解除できます。
 一日分以上を入力したら上の送信ボタンを押してください。`;
-const APP_VERSION = "20260315-19";
+const APP_VERSION = "20260504a";
 const MONTHLY_COMPLETE_IMAGE_SRC = "./icons/monthly-complete.png";
 const MONTHLY_COMPLETE_IMAGE_ALT = "今月分はすべて完了しました。明日もよろしくお願いします。";
 const sharedSettings = window.SharedLauncherSettings || null;
@@ -378,7 +378,7 @@ async function handleSend() {
       return;
     }
     const confirmMessage = buildSendConfirmMessage(sendPlan);
-    if (!confirmMessage || window.confirm(confirmMessage)) {
+    if (!confirmMessage || await confirmInPage(confirmMessage)) {
       await submitSend(sendPlan, maintenanceNote);
     }
     return;
@@ -481,7 +481,7 @@ async function awardDriverPointsForDailyInspection(sendPlan) {
 
 function getSendPlan() {
   if (!state.session || !state.pendingDays.length) {
-    setInspectionStatus("送信対象の日付がありません。", false, false);
+    showInspectionMessage("送信対象の日付がありません。", false);
     return null;
   }
 
@@ -498,7 +498,18 @@ function getSendPlan() {
   });
 
   if (!persistedDays.length) {
-    window.alert("入力済み、または休み指定した日付がありません。");
+    showInspectionMessage("入力済み、または休み指定した日付がありません。", true);
+    return null;
+  }
+
+  const incompleteDays = persistedDays.filter((day) => {
+    const dayKey = String(day);
+    return !isHolidaySelected(month, dayKey) && !isDayComplete(monthDraft[dayKey]);
+  });
+
+  if (incompleteDays.length) {
+    const message = buildIncompleteInspectionMessage(month, incompleteDays);
+    showInspectionMessage(message, true);
     return null;
   }
 
@@ -600,7 +611,7 @@ async function handleDayHeadTap(event) {
   }
 
   if (hasAnyCheckValue(dayDraft)) {
-    const confirmed = window.confirm(`${day}日を休みにしますか？\nOKでその日を休みとして色付けします。入力内容は送信するまで保存されません。`);
+    const confirmed = await confirmInPage(`${day}日を休みにしますか？\nOKでその日を休みとして色付けします。入力内容は送信するまで保存されません。`);
     if (!confirmed) return;
   }
 
@@ -1231,6 +1242,11 @@ function isDayComplete(values) {
   return Object.values(normalizeDayChecks(values || {})).every((value) => value !== "");
 }
 
+function buildIncompleteInspectionMessage(month, days) {
+  const dayList = days.map((day) => `${day}日`).join("、");
+  return `未完了の点検項目があります。${formatMonth(month)} ${dayList}をすべて入力するか、休み指定してください。`;
+}
+
 function hasMaintenanceMark(values) {
   return Object.values(normalizeDayChecks(values || {})).includes("▲");
 }
@@ -1385,7 +1401,7 @@ function promptMaintenanceNoteIfNeeded(sendPlan) {
     if (trimmedNote) {
       return trimmedNote;
     }
-    window.alert("整備内容を入力してください。");
+    showInspectionMessage("整備内容を入力してください。", true);
   }
 }
 
@@ -1513,6 +1529,136 @@ function showInspectionGuide() {
 
 function clearInspectionStatus() {
   setStatus(elements.inspectionStatus, "", false, false);
+}
+
+function showInspectionMessage(message, isError = true) {
+  void alertInPage(message);
+}
+
+function confirmInPage(message) {
+  if (typeof HTMLDialogElement !== "function") {
+    setInspectionStatus(message, true);
+    return Promise.resolve(false);
+  }
+
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.setAttribute("aria-label", "確認");
+    dialog.style.maxWidth = "min(520px, calc(100vw - 32px))";
+    dialog.style.border = "1px solid #d0d7de";
+    dialog.style.borderRadius = "8px";
+    dialog.style.padding = "0";
+    dialog.style.boxShadow = "0 20px 48px rgba(15, 23, 42, 0.24)";
+
+    const panel = document.createElement("div");
+    panel.style.padding = "20px";
+
+    const title = document.createElement("h2");
+    title.textContent = "確認";
+    title.style.margin = "0 0 12px";
+    title.style.fontSize = "18px";
+
+    const body = document.createElement("p");
+    body.textContent = message;
+    body.style.whiteSpace = "pre-wrap";
+    body.style.margin = "0 0 18px";
+    body.style.lineHeight = "1.6";
+
+    const actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.justifyContent = "flex-end";
+    actions.style.gap = "8px";
+
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.textContent = "キャンセル";
+
+    const okButton = document.createElement("button");
+    okButton.type = "button";
+    okButton.textContent = "OK";
+    okButton.style.fontWeight = "700";
+
+    actions.append(cancelButton, okButton);
+    panel.append(title, body, actions);
+    dialog.append(panel);
+    document.body.append(dialog);
+
+    function closeDialog(result) {
+      dialog.close();
+      dialog.remove();
+      resolve(result);
+    }
+
+    cancelButton.addEventListener("click", () => closeDialog(false));
+    okButton.addEventListener("click", () => closeDialog(true));
+    dialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeDialog(false);
+    });
+
+    dialog.showModal();
+    okButton.focus();
+  });
+}
+
+function alertInPage(message) {
+  if (typeof HTMLDialogElement !== "function") {
+    setInspectionStatus(message, true);
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.setAttribute("aria-label", "お知らせ");
+    dialog.style.maxWidth = "min(520px, calc(100vw - 32px))";
+    dialog.style.border = "1px solid #d0d7de";
+    dialog.style.borderRadius = "8px";
+    dialog.style.padding = "0";
+    dialog.style.boxShadow = "0 20px 48px rgba(15, 23, 42, 0.24)";
+
+    const panel = document.createElement("div");
+    panel.style.padding = "20px";
+
+    const title = document.createElement("h2");
+    title.textContent = "お知らせ";
+    title.style.margin = "0 0 12px";
+    title.style.fontSize = "18px";
+
+    const body = document.createElement("p");
+    body.textContent = message;
+    body.style.whiteSpace = "pre-wrap";
+    body.style.margin = "0 0 18px";
+    body.style.lineHeight = "1.6";
+
+    const actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.justifyContent = "flex-end";
+
+    const okButton = document.createElement("button");
+    okButton.type = "button";
+    okButton.textContent = "OK";
+    okButton.style.fontWeight = "700";
+
+    actions.append(okButton);
+    panel.append(title, body, actions);
+    dialog.append(panel);
+    document.body.append(dialog);
+
+    function closeDialog() {
+      dialog.close();
+      dialog.remove();
+      resolve();
+    }
+
+    okButton.addEventListener("click", closeDialog);
+    dialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeDialog();
+    });
+
+    dialog.showModal();
+    okButton.focus();
+  });
 }
 
 function setStatus(element, message, isError = false, isSuccess = false) {
