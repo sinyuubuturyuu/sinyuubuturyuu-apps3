@@ -15,6 +15,7 @@
     profilesFieldName: "userProfiles"
   });
   const DEFAULT_COLLECTION = "syainmeibo";
+  const POINT_SETTINGS_COLLECTION = "driver-point-settings";
   const BACKUP_VALUE_FIELDS = Object.freeze({
     vehicles: Object.freeze(["values", "vehicles", "vehicleNumbers", "車両番号", "車番"]),
     drivers: Object.freeze(["values", "drivers", "driverNames", "運転者", "運転者名", "乗務員", "乗務員名", "乗務員名簿"])
@@ -54,6 +55,12 @@
     db: null,
     directoryDb: null,
     directoryError: "",
+    pointSettings: {
+      loading: false,
+      loaded: false,
+      error: "",
+      byLoginId: Object.create(null)
+    },
     working: false,
     editing: {
       vehicleNumber: "",
@@ -267,8 +274,37 @@
         return "読み: " + readingLabel + " / ログインID: " + (profile.loginId || "未設定") + " / " + vehicleLabel;
       },
       onEdit: startDriverEdit,
-      onDelete: removeDriver
+      onDelete: removeDriver,
+      getStatus: formatDriverPointSettingStatus
     });
+  }
+
+  function formatDriverPointSettingStatus(profile) {
+    const loginId = sharedSettings.normalizeLoginId(profile && profile.loginId);
+    if (!loginId) {
+      return "ポイント設定: 確認不可（ログインID未設定）";
+    }
+    if (state.pointSettings.error) {
+      return "ポイント設定: 確認失敗";
+    }
+    if (!state.pointSettings.loaded) {
+      return state.pointSettings.loading ? "ポイント設定: 確認中" : "ポイント設定: 確認失敗";
+    }
+
+    const setting = state.pointSettings.byLoginId[loginId];
+    if (!setting) {
+      return "ポイント設定: ON（既定） / 最終更新: 未保存";
+    }
+    return (setting.enabled === false ? "ポイント設定: OFF" : "ポイント設定: ON")
+      + " / 最終更新: " + formatPointSettingUpdatedAt(setting.updatedAt);
+  }
+
+  function formatPointSettingUpdatedAt(value) {
+    const text = String(value || "").trim();
+    if (!text) {
+      return "未保存";
+    }
+    return text.slice(0, 10);
   }
 
   function renderProfileList(options) {
@@ -300,6 +336,13 @@
       meta.className = "value-item-meta";
       meta.textContent = options.getMeta(row);
       copy.appendChild(meta);
+
+      if (typeof options.getStatus === "function") {
+        const status = document.createElement("span");
+        status.className = "value-item-meta";
+        status.textContent = options.getStatus(row);
+        copy.appendChild(status);
+      }
 
       const actions = document.createElement("div");
       actions.className = "value-item-actions";
@@ -572,6 +615,7 @@
 
     await refreshBackups();
     await syncDriverReadingsFromBackup();
+    await refreshDriverPointSettings();
 
     if (state.directoryEnabled && !state.directoryDb && state.db) {
       setGlobalStatus("社員名簿 Firebase に接続できないため、既存バックアップを使います。", false);
@@ -748,6 +792,65 @@
     }
 
     render();
+  }
+
+  async function refreshDriverPointSettings() {
+    const loginIds = Array.from(new Set(state.shared.userProfiles
+      .map(function (profile) { return sharedSettings.normalizeLoginId(profile && profile.loginId); })
+      .filter(Boolean)));
+
+    state.pointSettings.loading = true;
+    state.pointSettings.loaded = false;
+    state.pointSettings.error = "";
+    render();
+
+    if (!loginIds.length) {
+      state.pointSettings.byLoginId = Object.create(null);
+      state.pointSettings.loading = false;
+      state.pointSettings.loaded = true;
+      render();
+      return;
+    }
+
+    if (!state.db) {
+      state.pointSettings.byLoginId = Object.create(null);
+      state.pointSettings.loading = false;
+      state.pointSettings.loaded = false;
+      state.pointSettings.error = "firebase_unavailable";
+      render();
+      return;
+    }
+
+    try {
+      const snapshots = await Promise.all(loginIds.map(function (loginId) {
+        return state.db.collection(POINT_SETTINGS_COLLECTION).doc(loginId).get()
+          .then(function (snapshot) {
+            return { loginId: loginId, snapshot: snapshot };
+          });
+      }));
+      const nextByLoginId = Object.create(null);
+      snapshots.forEach(function (entry) {
+        if (!entry.snapshot.exists) {
+          return;
+        }
+        const data = entry.snapshot.data() || {};
+        nextByLoginId[entry.loginId] = {
+          enabled: data.enabled !== false,
+          updatedAt: formatFirestoreDate(data.updatedAt)
+        };
+      });
+      state.pointSettings.byLoginId = nextByLoginId;
+      state.pointSettings.loaded = true;
+      state.pointSettings.error = "";
+    } catch (error) {
+      state.pointSettings.byLoginId = Object.create(null);
+      state.pointSettings.loaded = false;
+      state.pointSettings.error = formatErrorReason(error) || "unknown";
+      console.warn("Failed to load driver point settings:", error);
+    } finally {
+      state.pointSettings.loading = false;
+      render();
+    }
   }
 
   async function syncDriverReadingsFromBackup() {

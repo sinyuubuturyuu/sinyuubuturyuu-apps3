@@ -1,8 +1,8 @@
 (function () {
   "use strict";
 
-  const FEATURE_STORAGE_KEY = "driver.points.feature.enabled.v1";
   const LAST_AWARD_KEY = "driver.points.last_award_at.v1";
+  const POINT_SETTINGS_COLLECTION = "driver-point-settings";
   const POINT_SUMMARY_CACHE_TTL_MS = 5000;
   const PAGE_SHOW_REFRESH_INTERVAL_MS = 5000;
   const BADGE_REFRESH_DEBOUNCE_MS = 120;
@@ -42,11 +42,22 @@
   };
   const runtimeState = {
     promise: null,
-    featureStateInitialized: false
+    featureStateInitialized: false,
+    setting: {
+      loginId: "",
+      enabled: true,
+      exists: false,
+      loaded: false,
+      error: null
+    }
   };
 
   function normalizeText(value) {
     return String(value ?? "").trim();
+  }
+
+  function normalizeLoginId(value) {
+    return normalizeText(value).toLowerCase();
   }
 
   function isLocalDevelopmentHost() {
@@ -189,10 +200,6 @@
     if (runtimeState.featureStateInitialized) {
       return;
     }
-    const currentValue = window.localStorage.getItem(FEATURE_STORAGE_KEY);
-    if (currentValue !== "on" && currentValue !== "off") {
-      window.localStorage.setItem(FEATURE_STORAGE_KEY, "on");
-    }
     runtimeState.featureStateInitialized = true;
   }
 
@@ -249,24 +256,143 @@
     });
   }
 
-  function getFeatureState() {
+  function getCurrentLoginId(user) {
     ensureFeatureStateInitialized();
-    const value = window.localStorage.getItem(FEATURE_STORAGE_KEY);
-    if (value === "on" || value === "off") {
-      return value;
+    const sharedSettings = window.SharedLauncherSettings;
+    if (sharedSettings && typeof sharedSettings.ensureState === "function") {
+      const sharedState = sharedSettings.ensureState();
+      const currentLoginId = normalizeLoginId(sharedState && sharedState.current && sharedState.current.loginId);
+      if (currentLoginId) {
+        return currentLoginId;
+      }
     }
-    window.localStorage.setItem(FEATURE_STORAGE_KEY, "off");
-    return "off";
+    const email = normalizeLoginId(user && user.email);
+    if (email) {
+      return email;
+    }
+    return normalizeLoginId(user && user.uid);
+  }
+
+  function getCurrentDriverName() {
+    const sharedSettings = window.SharedLauncherSettings;
+    if (sharedSettings && typeof sharedSettings.ensureState === "function") {
+      const sharedState = sharedSettings.ensureState();
+      return normalizeDriverName(sharedState && sharedState.current && sharedState.current.driverName);
+    }
+    return "";
   }
 
   function isEnabled() {
-    return getFeatureState() === "on";
+    ensureFeatureStateInitialized();
+    return runtimeState.setting.enabled !== false;
   }
 
-  function setEnabled(enabled) {
+  function isLauncherAppVisible() {
+    const launcherApp = document.getElementById("launcherApp");
+    return !launcherApp || launcherApp.hidden !== true;
+  }
+
+  function updateSettingState(nextSetting) {
     ensureFeatureStateInitialized();
-    window.localStorage.setItem(FEATURE_STORAGE_KEY, enabled ? "on" : "off");
-    syncLauncherUi();
+    runtimeState.setting = {
+      ...runtimeState.setting,
+      ...nextSetting
+    };
+  }
+
+  async function loadPointFeatureSetting(options = {}) {
+    ensureFeatureStateInitialized();
+    const runtime = await ensureRuntime();
+    const loginId = getCurrentLoginId(runtime.user);
+    if (!loginId) {
+      updateSettingState({
+        loginId: "",
+        enabled: true,
+        exists: false,
+        loaded: true,
+        error: null
+      });
+      return runtimeState.setting;
+    }
+
+    if (
+      options.force !== true
+      && runtimeState.setting.loaded
+      && runtimeState.setting.loginId === loginId
+      && !runtimeState.setting.error
+    ) {
+      return runtimeState.setting;
+    }
+
+    const { doc, getDoc, getDocFromServer } = runtime.firestoreModule;
+    const settingRef = doc(runtime.db, POINT_SETTINGS_COLLECTION, loginId);
+    let snapshot;
+    try {
+      if (options.force === true && typeof getDocFromServer === "function") {
+        try {
+          snapshot = await getDocFromServer(settingRef);
+        } catch {
+          snapshot = await getDoc(settingRef);
+        }
+      } else {
+        snapshot = await getDoc(settingRef);
+      }
+    } catch (error) {
+      updateSettingState({
+        loginId,
+        enabled: true,
+        exists: false,
+        loaded: false,
+        error
+      });
+      throw error;
+    }
+
+    const data = snapshot.exists() ? snapshot.data() : {};
+    updateSettingState({
+      loginId,
+      enabled: snapshot.exists() ? data.enabled !== false : true,
+      exists: snapshot.exists(),
+      loaded: true,
+      error: null
+    });
+    return runtimeState.setting;
+  }
+
+  async function setEnabled(enabled) {
+    ensureFeatureStateInitialized();
+    updateSettingState({
+      enabled: enabled !== false,
+      loaded: true,
+      error: null
+    });
+    syncLauncherUi({ reason: "setting_change" });
+
+    const runtime = await ensureRuntime();
+    const loginId = getCurrentLoginId(runtime.user);
+    if (!loginId) {
+      throw new Error("Login ID is missing for driver point setting.");
+    }
+
+    const { doc, serverTimestamp, setDoc } = runtime.firestoreModule;
+    const settingRef = doc(runtime.db, POINT_SETTINGS_COLLECTION, loginId);
+    await setDoc(settingRef, {
+      enabled: enabled !== false,
+      loginId,
+      email: normalizeLoginId(runtime.user && runtime.user.email),
+      driverName: getCurrentDriverName(),
+      uid: normalizeText(runtime.user && runtime.user.uid),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    updateSettingState({
+      loginId,
+      enabled: enabled !== false,
+      exists: true,
+      loaded: true,
+      error: null
+    });
+    syncLauncherUi({ force: true, reason: "setting_saved" });
     return isEnabled();
   }
 
@@ -353,6 +479,7 @@
 
       return {
         db,
+        user,
         firestoreModule
       };
     })().catch((error) => {
@@ -368,7 +495,8 @@
     if (!identity.driverKey || !identity.vehicleKey) {
       return { ok: false, enabled: isEnabled(), driverName: identity.driverName, vehicleNumber: identity.vehicleNumber, points: 0 };
     }
-    if (!isEnabled()) {
+    const featureSetting = await loadPointFeatureSetting({ force: options.force === true });
+    if (!featureSetting.enabled) {
       return { ok: true, enabled: false, driverName: identity.driverName, vehicleNumber: identity.vehicleNumber, points: 0 };
     }
     if (options.force !== true) {
@@ -409,7 +537,8 @@
     if (!identity.driverKey || !identity.vehicleKey) {
       return { ok: false, enabled: isEnabled(), addedPoints: 0, awards: [] };
     }
-    if (!isEnabled()) {
+    const featureSetting = await loadPointFeatureSetting();
+    if (!featureSetting.enabled) {
       return { ok: true, enabled: false, addedPoints: 0, awards: [] };
     }
 
@@ -764,7 +893,17 @@
     settingsFields.appendChild(section);
 
     toggle.addEventListener("change", (event) => {
-      setEnabled(String(event.target.value || "") === "on");
+      const enabled = String(event.target.value || "") === "on";
+      event.target.disabled = true;
+      void setEnabled(enabled).catch((error) => {
+        console.warn("Failed to save driver point setting:", error);
+        updateSettingState({ enabled: !enabled, error });
+        syncLauncherUi({ reason: "setting_save_failed" });
+        window.alert("ポイント設定を保存できませんでした。通信状態とログイン状態を確認して、もう一度操作してください。");
+      }).finally(() => {
+        event.target.disabled = false;
+        renderSettingsSection();
+      });
     });
 
     return section;
@@ -783,6 +922,24 @@
 
     if (toggle) {
       toggle.value = enabled ? "on" : "off";
+    }
+
+    if (isLauncherAppVisible() && (!runtimeState.setting.loaded || runtimeState.setting.error)) {
+      void refreshFeatureSettingForUi();
+    }
+  }
+
+  async function refreshFeatureSettingForUi() {
+    try {
+      await loadPointFeatureSetting({ force: true });
+    } catch (error) {
+      console.warn("Failed to load driver point setting:", error);
+    } finally {
+      const toggle = document.getElementById("driverPointsFeatureToggle");
+      if (toggle) {
+        toggle.value = isEnabled() ? "on" : "off";
+      }
+      requestBadgeRefresh({ force: true, reason: "feature_setting_loaded" });
     }
   }
 
@@ -871,7 +1028,7 @@
     }
 
     const selection = getCurrentSelection(elements);
-    if (!isEnabled() || !selection.driverName || !selection.vehicleNumber) {
+    if (!selection.driverName || !selection.vehicleNumber) {
       hideBadge();
       return;
     }
@@ -935,7 +1092,15 @@
     uiState.authObserverBound = true;
     void authApi.onChange((user) => {
       runtimeState.promise = null;
+      updateSettingState({
+        loginId: "",
+        enabled: true,
+        exists: false,
+        loaded: false,
+        error: null
+      });
       if (user) {
+        void refreshFeatureSettingForUi();
         requestBadgeRefresh({ force: true, reason: "auth_change", delayMs: 0 });
         return;
       }
@@ -972,12 +1137,6 @@
     }
     mountLauncherUi();
   }
-
-  window.addEventListener("storage", (event) => {
-    if (event.key === FEATURE_STORAGE_KEY) {
-      syncLauncherUi({ reason: "storage" });
-    }
-  });
 
   window.addEventListener("pageshow", () => {
     syncLauncherUi({ reason: "pageshow" });
