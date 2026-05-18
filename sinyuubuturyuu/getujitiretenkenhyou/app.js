@@ -18,6 +18,10 @@
       const LAST_COMMIT_PUSHED_AT = "2026-03-01 21:33";
       const MONTHLY_COMPLETE_IMAGE_SRC = "icons/monthly-complete.png";
       const MONTHLY_COMPLETE_IMAGE_ALT = "今月分はすべて入力済みです。来月もよろしくお願いします。";
+      const SEND_FAREWELL_IMAGE_SRCS = Object.freeze([
+        "icons/send-farewell.png?v=20260315-15",
+        "icons/send-farewell-02.png?v=20260518a"
+      ]);
       const GITHUB_REPO_API_LATEST_COMMIT = "https://api.github.com/repos/sinyuubuturyuu/sinyuubuturyuu/commits?sha=main&per_page=1";
 
       const TRUCK_TYPES = {
@@ -36,6 +40,12 @@
         EXPORT: "export",
         SETTINGS: "settings"
       };
+
+      function pickSendFarewellImageSrc() {
+        const index = Math.floor(Math.random() * SEND_FAREWELL_IMAGE_SRCS.length);
+        return SEND_FAREWELL_IMAGE_SRCS[index] || SEND_FAREWELL_IMAGE_SRCS[0];
+      }
+
       const sharedSettings = window.SharedLauncherSettings || null;
       const REFERENCE_FIREBASE_CONFIG = getRuntimeFirebaseConfig(window.APP_FIREBASE_DIRECTORY_CONFIG || window.APP_FIREBASE_CONFIG || {});
       const REFERENCE_SOURCE_KIND = Object.freeze({
@@ -1919,12 +1929,10 @@
 
       async function showSendFarewell(options = {}) {
         if (!el.sendFarewell) return;
-        el.sendFarewell.classList.add("show");
-        el.sendFarewell.setAttribute("aria-hidden", "false");
 
         const image = el.sendFarewellImage;
         if (image) {
-          if (options.src) image.src = options.src;
+          image.src = options.src || pickSendFarewellImageSrc();
           if (options.alt) image.alt = options.alt;
         }
         if (image && !image.complete) {
@@ -1942,6 +1950,8 @@
             window.setTimeout(finish, 1200);
           });
         }
+        el.sendFarewell.classList.add("show");
+        el.sendFarewell.setAttribute("aria-hidden", "false");
         await new Promise((resolve) => setTimeout(resolve, 1800));
       }
 

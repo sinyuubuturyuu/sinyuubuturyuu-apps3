@@ -1,9 +1,9 @@
-const CACHE_NAME = "monthly-tire-check-v53";
+const CACHE_NAME = "monthly-tire-check-v54";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css?v=20260312-2",
-  "./app.js?v=20260405a",
+  "./app.js?v=20260518a",
   "./manifest.webmanifest",
   "./sw.js",
   "./firebase/firebase-config.js?v=20260322-1",
@@ -12,7 +12,8 @@ const ASSETS = [
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/monthly-complete.png",
-  "./icons/send-farewell.png?v=20260315-15"
+  "./icons/send-farewell.png?v=20260315-15",
+  "./icons/send-farewell-02.png?v=20260518a"
 ];
 const NETWORK_FIRST_PATH_SUFFIXES = [
   "/app.js",
