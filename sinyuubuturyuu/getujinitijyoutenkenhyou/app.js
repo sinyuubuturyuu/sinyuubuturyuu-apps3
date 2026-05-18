@@ -19,10 +19,19 @@ const INSPECTION_GUIDE_MESSAGE = `未入力日のみ表示しています。
 タップすると空欄 → レ → × → ▲と入力されます。　
 休みの日は日付を押して休みとしてください。もう一度押すと解除できます。
 一日分以上を入力したら上の送信ボタンを押してください。`;
-const APP_VERSION = "20260504a";
+const APP_VERSION = "20260518a";
 const MONTHLY_COMPLETE_IMAGE_SRC = "./icons/monthly-complete.png";
 const MONTHLY_COMPLETE_IMAGE_ALT = "今月分はすべて完了しました。明日もよろしくお願いします。";
+const SEND_FAREWELL_IMAGE_SRCS = Object.freeze([
+  "./icons/send-farewell.png?v=20260315-20",
+  "./icons/send-farewell-02.png?v=20260518a"
+]);
 const sharedSettings = window.SharedLauncherSettings || null;
+
+function pickSendFarewellImageSrc() {
+  const index = Math.floor(Math.random() * SEND_FAREWELL_IMAGE_SRCS.length);
+  return SEND_FAREWELL_IMAGE_SRCS[index] || SEND_FAREWELL_IMAGE_SRCS[0];
+}
 
 function isLocalDevelopmentHost() {
   const host = window.location.hostname;
@@ -1022,15 +1031,19 @@ function closeSendConfirmDialog() {
   }
 }
 
-async function showSendFarewell() {
+async function showSendFarewell(options = {}) {
   if (!elements.sendFarewell) {
     return;
   }
 
-  elements.sendFarewell.classList.add("show");
-  elements.sendFarewell.setAttribute("aria-hidden", "false");
-
   const image = elements.sendFarewellImage;
+  if (image) {
+    image.src = options.src || pickSendFarewellImageSrc();
+    if (options.alt) {
+      image.alt = options.alt;
+    }
+  }
+
   if (image && !image.complete) {
     await new Promise((resolve) => {
       let done = false;
@@ -1049,6 +1062,8 @@ async function showSendFarewell() {
     });
   }
 
+  elements.sendFarewell.classList.add("show");
+  elements.sendFarewell.setAttribute("aria-hidden", "false");
   await new Promise((resolve) => setTimeout(resolve, 1800));
 }
 
@@ -1063,11 +1078,10 @@ async function showMonthlyCompleteAndReturnHome() {
   const previousAlt = image ? image.getAttribute("alt") || "" : "";
 
   try {
-    if (image) {
-      image.src = MONTHLY_COMPLETE_IMAGE_SRC;
-      image.alt = MONTHLY_COMPLETE_IMAGE_ALT;
-    }
-    await showSendFarewell();
+    await showSendFarewell({
+      src: MONTHLY_COMPLETE_IMAGE_SRC,
+      alt: MONTHLY_COMPLETE_IMAGE_ALT
+    });
     returnToLauncherHome();
   } finally {
     if (image) {

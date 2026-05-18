@@ -1,4 +1,4 @@
-const APP_VERSION = "20260504a";
+const APP_VERSION = "20260518a";
 const CACHE_NAME = `monthly-inspection-shell-${APP_VERSION}`;
 const APP_SHELL = [
   "./",
@@ -12,7 +12,8 @@ const APP_SHELL = [
   "./icons/icon-512.png",
   "./icons/icon-512-maskable.png",
   "./icons/apple-touch-icon.png",
-  `./icons/send-farewell.png?v=${APP_VERSION}`
+  "./icons/send-farewell.png?v=20260315-20",
+  `./icons/send-farewell-02.png?v=${APP_VERSION}`
 ];
 const APP_SHELL_URLS = new Set(APP_SHELL.map((path) => new URL(path, self.location.href).href));
 
