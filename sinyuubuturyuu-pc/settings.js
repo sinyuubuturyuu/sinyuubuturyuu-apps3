@@ -167,6 +167,88 @@
     elements.globalStatus.dataset.state = message ? (isError ? "error" : "info") : "";
   }
 
+  function showMessageDialog(message) {
+    return showSettingsDialog({
+      title: "お知らせ",
+      message: message,
+      confirmLabel: "OK",
+      showCancel: false
+    });
+  }
+
+  function confirmDeleteDialog(message) {
+    return showSettingsDialog({
+      title: "削除確認",
+      message: message,
+      confirmLabel: "削除",
+      cancelLabel: "キャンセル",
+      showCancel: true,
+      danger: true
+    });
+  }
+
+  function showSettingsDialog(options) {
+    return new Promise(function (resolve) {
+      const dialog = document.createElement("dialog");
+      dialog.className = "settings-dialog";
+      dialog.setAttribute("aria-labelledby", "settingsDialogTitle");
+
+      const panel = document.createElement("div");
+      panel.className = "settings-dialog-panel";
+
+      const title = document.createElement("h2");
+      title.id = "settingsDialogTitle";
+      title.textContent = options.title || "確認";
+      panel.appendChild(title);
+
+      const message = document.createElement("p");
+      message.className = "settings-dialog-message";
+      message.textContent = options.message || "";
+      panel.appendChild(message);
+
+      const actions = document.createElement("div");
+      actions.className = "settings-dialog-actions";
+
+      if (options.showCancel) {
+        const cancelButton = document.createElement("button");
+        cancelButton.type = "button";
+        cancelButton.className = "mini-button";
+        cancelButton.textContent = options.cancelLabel || "キャンセル";
+        cancelButton.addEventListener("click", function () {
+          closeDialog(false);
+        });
+        actions.appendChild(cancelButton);
+      }
+
+      const confirmButton = document.createElement("button");
+      confirmButton.type = "button";
+      confirmButton.className = options.danger ? "mini-button danger" : "mini-button primary";
+      confirmButton.textContent = options.confirmLabel || "OK";
+      confirmButton.addEventListener("click", function () {
+        closeDialog(true);
+      });
+      actions.appendChild(confirmButton);
+
+      panel.appendChild(actions);
+      dialog.appendChild(panel);
+      document.body.appendChild(dialog);
+
+      dialog.addEventListener("cancel", function (event) {
+        event.preventDefault();
+        closeDialog(false);
+      });
+
+      function closeDialog(result) {
+        dialog.close();
+        dialog.remove();
+        resolve(result);
+      }
+
+      dialog.showModal();
+      confirmButton.focus();
+    });
+  }
+
   function render() {
     refreshSharedState();
     renderVehicleForm();
@@ -511,16 +593,16 @@
     setGlobalStatus(editingProfile ? "運転者設定を訂正しました。" : "運転者設定を追加しました。");
   }
 
-  function removeVehicle(profile) {
+  async function removeVehicle(profile) {
     const referenceCount = state.shared.userProfiles.filter(function (userProfile) {
       return userProfile.vehicleNumber === profile.vehicleNumber;
     }).length;
     if (referenceCount > 0) {
-      setGlobalStatus("この車両番号は運転者設定で使われているため削除できません。先に運転者設定を訂正してください。", true);
+      await showMessageDialog("既定車番に登録しているため削除できません。");
       return;
     }
 
-    if (!window.confirm("車両番号「" + profile.vehicleNumber + "」を削除しますか？")) {
+    if (!await confirmDeleteDialog("車両番号「" + profile.vehicleNumber + "」を削除しますか？")) {
       return;
     }
 
@@ -534,8 +616,8 @@
     setGlobalStatus("車両設定を削除しました。");
   }
 
-  function removeDriver(profile) {
-    if (!window.confirm("運転者設定「" + profile.driverName + "」を削除しますか？")) {
+  async function removeDriver(profile) {
+    if (!await confirmDeleteDialog("運転者設定「" + profile.driverName + "」を削除しますか？")) {
       return;
     }
 
@@ -549,17 +631,17 @@
     setGlobalStatus("運転者設定を削除しました。");
   }
 
-  function clearAllVehicles() {
+  async function clearAllVehicles() {
     if (!state.shared.vehicleProfiles.length) {
       return;
     }
 
     if (state.shared.userProfiles.some(function (profile) { return Boolean(profile.vehicleNumber); })) {
-      setGlobalStatus("既定車番に使われている車両設定があるため全件削除できません。先に運転者設定を訂正してください。", true);
+      await showMessageDialog("既定車番に登録しているため削除できません。");
       return;
     }
 
-    if (!window.confirm("登録済みの車両設定をすべて削除しますか？\nFirebase バックアップは削除されません。")) {
+    if (!await confirmDeleteDialog("登録済みの車両設定をすべて削除しますか？\nFirebase バックアップは削除されません。")) {
       return;
     }
 
@@ -569,12 +651,12 @@
     setGlobalStatus("登録済みの車両設定をすべて削除しました。Firebase バックアップは残っています。");
   }
 
-  function clearAllDrivers() {
+  async function clearAllDrivers() {
     if (!state.shared.userProfiles.length) {
       return;
     }
 
-    if (!window.confirm("登録済みの運転者設定をすべて削除しますか？\nFirebase バックアップは削除されません。")) {
+    if (!await confirmDeleteDialog("登録済みの運転者設定をすべて削除しますか？\nFirebase バックアップは削除されません。")) {
       return;
     }
 
