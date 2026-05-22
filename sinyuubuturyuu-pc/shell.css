@@ -375,6 +375,44 @@ body {
   background: rgba(244, 247, 250, 0.7);
 }
 
+.settings-dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+}
+
+.settings-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.settings-dialog-panel {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.settings-dialog-panel h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.settings-dialog-message {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.7;
+  white-space: pre-line;
+}
+
+.settings-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 @media (max-width: 720px) {
   .shell-page {
     padding: 16px;
@@ -414,6 +452,14 @@ body {
   }
 
   .value-delete-button {
+    width: 100%;
+  }
+
+  .settings-dialog-actions {
+    flex-direction: column-reverse;
+  }
+
+  .settings-dialog-actions .mini-button {
     width: 100%;
   }
 }
