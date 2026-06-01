@@ -18,6 +18,7 @@
       const LAST_COMMIT_PUSHED_AT = "2026-03-01 21:33";
       const MONTHLY_COMPLETE_IMAGE_SRC = "icons/monthly-complete.png";
       const MONTHLY_COMPLETE_IMAGE_ALT = "今月分はすべて入力済みです。来月もよろしくお願いします。";
+      const MAX_SELECTABLE_MONTH_COUNT = 4;
       const SEND_FAREWELL_IMAGE_SRCS = Object.freeze([
         "icons/send-farewell.png?v=20260315-15",
         "icons/send-farewell-02.png?v=20260518a"
@@ -286,14 +287,10 @@
       };
       const buildSelectableMonthKeys = (date = new Date()) => {
         const keys = [];
-        const year = date.getFullYear();
-        const month = date.getMonth() + 1;
-        for (let currentMonth = month; currentMonth >= 1; currentMonth -= 1) {
-          keys.push(normalizeMonthKey(`${year}-${String(currentMonth).padStart(2, "0")}`));
-        }
-        const previousYearMonthCount = Math.max(0, 4 - month);
-        for (let offset = 0; offset < previousYearMonthCount; offset += 1) {
-          keys.push(normalizeMonthKey(`${year - 1}-${String(12 - offset).padStart(2, "0")}`));
+        const startDate = new Date(date.getFullYear(), date.getMonth() - (MAX_SELECTABLE_MONTH_COUNT - 1), 1);
+        for (let offset = 0; offset < MAX_SELECTABLE_MONTH_COUNT; offset += 1) {
+          const targetDate = new Date(startDate.getFullYear(), startDate.getMonth() + offset, 1);
+          keys.push(normalizeMonthKey(`${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, "0")}`));
         }
         return keys.filter(Boolean);
       };
