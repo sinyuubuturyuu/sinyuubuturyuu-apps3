@@ -1,9 +1,9 @@
-const CACHE_NAME = "monthly-tire-check-v54";
+const CACHE_NAME = "monthly-tire-check-v55";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css?v=20260312-2",
-  "./app.js?v=20260518a",
+  "./app.js?v=20260601a",
   "./manifest.webmanifest",
   "./sw.js",
   "./firebase/firebase-config.js?v=20260322-1",
