@@ -1509,6 +1509,7 @@ function handleMaintenanceManagerClick() {
   if (maintenanceManagerClickCount >= MAINTENANCE_BULK_STAMP_CLICK_COUNT) {
     maintenanceManagerClickCount = 0;
     maintenanceManagerClickResetTimer = null;
+    setStamp("maintenanceManager", "若本");
     stampMaintenanceManagerForWorkingDays();
     return;
   }
