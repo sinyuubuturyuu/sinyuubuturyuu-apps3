@@ -52,11 +52,15 @@ const EXCEL_STAMP_IMAGE_SIZES = {
   large: { width: 54, height: 54 },
   small: { width: 23, height: 23 }
 };
+const MAINTENANCE_BULK_STAMP_CLICK_COUNT = 5;
+const MAINTENANCE_BULK_STAMP_CLICK_TIMEOUT_MS = 2000;
 const EXCEL_CUSTOM_STAMP_ASSETS = {
   "若本:small": new URL("./assets/wakamoto-stamp.svg", import.meta.url).href
 };
 let jsZipModulePromise = null;
 const stampSvgMarkupPromiseCache = new Map();
+let maintenanceManagerClickCount = 0;
+let maintenanceManagerClickResetTimer = null;
 
 const firebaseConfig = getRuntimeFirebaseConfig(window.APP_FIREBASE_CONFIG || {
   apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
@@ -1318,6 +1322,7 @@ async function markHolidayForDay(day) {
 
   state.holidayDays = [...state.holidayDays, day].sort((left, right) => left - right);
   applyHolidayChecks(day);
+  setBottomStampByDay(day, "");
   setHolidayHeaderState(day, true);
   syncMaintenanceRecordsByDay();
   renderMaintenanceRecordCell();
@@ -1474,6 +1479,44 @@ function toggleBottomStampByDay(day, value) {
   const dayKey = String(day);
   const nextValue = state.maintenanceBottomByDay[dayKey] === value ? "" : value;
   setBottomStampByDay(day, nextValue);
+}
+
+function stampMaintenanceManagerForWorkingDays() {
+  const daysInMonth = getDaysInSelectedMonth();
+  let stampedCount = 0;
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    if (isHolidayDay(day)) {
+      setBottomStampByDay(day, "");
+      continue;
+    }
+
+    setBottomStampByDay(day, "若本");
+    stampedCount += 1;
+  }
+
+  setStatus(`休日を除く${stampedCount}日分に整備管理者印を押しました。保存すると反映されます。`);
+}
+
+function handleMaintenanceManagerClick() {
+  toggleStamp("maintenanceManager", "若本");
+  maintenanceManagerClickCount += 1;
+
+  if (maintenanceManagerClickResetTimer) {
+    clearTimeout(maintenanceManagerClickResetTimer);
+  }
+
+  if (maintenanceManagerClickCount >= MAINTENANCE_BULK_STAMP_CLICK_COUNT) {
+    maintenanceManagerClickCount = 0;
+    maintenanceManagerClickResetTimer = null;
+    stampMaintenanceManagerForWorkingDays();
+    return;
+  }
+
+  maintenanceManagerClickResetTimer = setTimeout(() => {
+    maintenanceManagerClickCount = 0;
+    maintenanceManagerClickResetTimer = null;
+  }, MAINTENANCE_BULK_STAMP_CLICK_TIMEOUT_MS);
 }
 
 function renderBottomStampRow() {
@@ -3608,7 +3651,7 @@ document.getElementById("saveBtn").addEventListener("click", () => {
 });
 
 document.getElementById("operationManagerSlot").addEventListener("click", () => toggleStamp("operationManager", "岸田"));
-document.getElementById("maintenanceManagerSlot").addEventListener("click", () => toggleStamp("maintenanceManager", "若本"));
+document.getElementById("maintenanceManagerSlot").addEventListener("click", handleMaintenanceManagerClick);
 
 exportExcelBtnEl.addEventListener("click", () => {
   downloadExcel().catch((error) => {
