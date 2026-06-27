@@ -7,14 +7,18 @@
 
 const MONTHLY_COMPLETE_IMAGE_SRC = "./getujitiretenkenhyou/icons/monthly-complete.png";
 const REFERENCE_FIREBASE_CONFIG = Object.freeze(getRuntimeFirebaseConfig(window.APP_FIREBASE_DIRECTORY_CONFIG || {
-  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
-  authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
-  projectId: "sinyuubuturyuu-86aeb",
-  storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
-  messagingSenderId: "213947378677",
-  appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
-  measurementId: "G-F9VYGCTHEV",
+  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
+  authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
+  projectId: "sinyuubuturyuu-dev",
+  storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
+  messagingSenderId: "997788842966",
+  appId: "1:997788842966:web:e011e7340e2af863c40277",
 }));
+const FIREBASE_ENVIRONMENT = Object.freeze({
+  developmentProjectId: "sinyuubuturyuu-dev",
+  currentProjectId: String((window.APP_FIREBASE_CONFIG && window.APP_FIREBASE_CONFIG.projectId) || "").trim(),
+});
+const IS_DEVELOPMENT_FIREBASE_ENVIRONMENT = FIREBASE_ENVIRONMENT.currentProjectId === FIREBASE_ENVIRONMENT.developmentProjectId;
 const REFERENCE_SOURCE_KIND = Object.freeze({
   VEHICLES: "vehicles",
   DRIVERS: "drivers",
@@ -40,13 +44,12 @@ const DAILY_INSPECTION_COMPLETE_IMAGE_SRC = "./getujinitijyoutenkenhyou/icons/mo
 const DAILY_INSPECTION_COMPLETE_IMAGE_ALT = "Daily inspection complete for this month.";
 const LAUNCH_RETRY_MESSAGE = "通信状態を確認して、もう一度タップしてください。";
 const DAILY_INSPECTION_FIREBASE_CONFIG = Object.freeze(getRuntimeFirebaseConfig({
-  apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
-  authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
-  projectId: "sinyuubuturyuu-86aeb",
-  storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
-  messagingSenderId: "213947378677",
-  appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
-  measurementId: "G-F9VYGCTHEV",
+  apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
+  authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
+  projectId: "sinyuubuturyuu-dev",
+  storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
+  messagingSenderId: "997788842966",
+  appId: "1:997788842966:web:e011e7340e2af863c40277",
 }));
 const DAILY_INSPECTION_APP_SETTINGS = Object.freeze({
   collectionName: "getujinitijyoutenkenhyou",
@@ -161,6 +164,7 @@ const elements = {
   authStatus: document.getElementById("authStatus"),
   authUserEmail: document.getElementById("authUserEmail"),
   logoutButton: document.getElementById("logoutButton"),
+  environmentBadge: document.getElementById("environmentBadge"),
 };
 
 function readSharedState() {
@@ -202,6 +206,7 @@ const state = {
 };
 renderAll();
 bindEvents();
+void cleanupDevelopmentRuntimeIsolation();
 registerServiceWorker();
 void initializeAuth();
 
@@ -212,10 +217,26 @@ function refreshSharedState() {
 function renderAll() {
   refreshSharedState();
   applyTheme();
+  renderEnvironmentBadge();
   renderAuth();
   renderLauncherButtons();
   renderCurrentSelection();
   renderSettings();
+}
+
+function renderEnvironmentBadge() {
+  if (!elements.environmentBadge) {
+    return;
+  }
+
+  const projectId = FIREBASE_ENVIRONMENT.currentProjectId || "unknown";
+  if (IS_DEVELOPMENT_FIREBASE_ENVIRONMENT) {
+    elements.environmentBadge.textContent = `DEV / ${projectId}`;
+    elements.environmentBadge.hidden = false;
+    return;
+  }
+
+  elements.environmentBadge.hidden = true;
 }
 
 function renderAuth() {
@@ -645,9 +666,7 @@ async function getReferenceSettingsRuntime() {
       import("https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js"),
     ]);
 
-    const app = typeof appModule.getApps === "function" && appModule.getApps().length
-      ? appModule.getApp()
-      : appModule.initializeApp(REFERENCE_FIREBASE_CONFIG);
+    const app = getFirebaseAppForConfig(appModule, REFERENCE_FIREBASE_CONFIG, "reference-app");
 
     const auth = authModule.getAuth(app);
     const db = firestoreModule.getFirestore(app);
@@ -1366,15 +1385,13 @@ async function listDailyInspectionRecords(vehicle, driver) {
 
   await requireSignedInUser();
 
-  const [{ getApp, getApps, initializeApp }, authModule, firestoreModule] = await Promise.all([
+  const [appModule, authModule, firestoreModule] = await Promise.all([
     import("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js"),
     import("https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js"),
     import("https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js"),
   ]);
 
-  const app = typeof getApps === "function" && getApps().length
-    ? getApp()
-    : initializeApp(runtime.firebaseConfig);
+  const app = getFirebaseAppForConfig(appModule, runtime.firebaseConfig, "daily-inspection-app");
   const auth = authModule.getAuth(app);
   connectAuthEmulatorIfNeeded(authModule, auth);
   if (!auth.currentUser && typeof auth.authStateReady === "function") {
@@ -1598,7 +1615,62 @@ function canRegisterServiceWorker() {
   return window.location.protocol === "http:" || window.location.protocol === "https:";
 }
 
+function getFirebaseAppForConfig(appModule, config, fallbackAppName) {
+  const apps = typeof appModule.getApps === "function" ? appModule.getApps() : [];
+  const expectedProjectId = String(config && config.projectId ? config.projectId : "").trim();
+  const matchedApp = apps.find((app) => {
+    const projectId = app && app.options ? String(app.options.projectId || "").trim() : "";
+    return projectId && projectId === expectedProjectId;
+  });
+
+  if (matchedApp) {
+    return matchedApp;
+  }
+  if (!apps.length) {
+    return appModule.initializeApp(config);
+  }
+
+  const appName = fallbackAppName || `sinyuubuturyuu-${expectedProjectId || "firebase"}`;
+  try {
+    return appModule.getApp(appName);
+  } catch {
+    return appModule.initializeApp(config, appName);
+  }
+}
+
+async function cleanupDevelopmentRuntimeIsolation() {
+  if (!IS_DEVELOPMENT_FIREBASE_ENVIRONMENT) {
+    return;
+  }
+
+  try {
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      const launcherScope = new URL("./", window.location.href).href;
+      await Promise.all(registrations
+        .filter((registration) => String(registration.scope || "").startsWith(launcherScope))
+        .map((registration) => registration.unregister()));
+    }
+    if ("caches" in window) {
+      const cacheKeys = await caches.keys();
+      await Promise.all(cacheKeys
+        .filter((key) => (
+          key.startsWith("sinyuubuturyuu-launcher-")
+          || key.startsWith("monthly-tire-check-")
+          || key.startsWith("monthly-inspection-shell-")
+        ))
+        .map((key) => caches.delete(key)));
+    }
+  } catch (error) {
+    console.warn("Development runtime isolation cleanup failed:", error);
+  }
+}
+
 function registerServiceWorker() {
+  if (IS_DEVELOPMENT_FIREBASE_ENVIRONMENT) {
+    return;
+  }
+
   if (!canRegisterServiceWorker()) {
     return;
   }

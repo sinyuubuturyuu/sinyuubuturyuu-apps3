@@ -50,6 +50,29 @@
     auth.__sinyuubuturyuuEmulatorConnected = true;
   }
 
+  function getFirebaseAppForConfig(appModule, config) {
+    const apps = typeof appModule.getApps === "function" ? appModule.getApps() : [];
+    const expectedProjectId = String(config && config.projectId ? config.projectId : "").trim();
+    const matchedApp = apps.find((app) => {
+      const projectId = app && app.options ? String(app.options.projectId || "").trim() : "";
+      return projectId && projectId === expectedProjectId;
+    });
+
+    if (matchedApp) {
+      return matchedApp;
+    }
+    if (!apps.length) {
+      return appModule.initializeApp(config);
+    }
+
+    const appName = `sinyuubuturyuu-${expectedProjectId || "firebase"}`;
+    try {
+      return appModule.getApp(appName);
+    } catch {
+      return appModule.initializeApp(config, appName);
+    }
+  }
+
   async function ensureRuntime() {
     if (runtimePromise) {
       return runtimePromise;
@@ -61,15 +84,12 @@
         throw new Error("Firebase設定が不足しています。");
       }
 
-      const [{ getApp, getApps, initializeApp }, authModule] = await Promise.all([
+      const [appModule, authModule] = await Promise.all([
         import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`),
         import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`)
       ]);
 
-      const app = typeof getApps === "function" && getApps().length
-        ? getApp()
-        : initializeApp(config);
-
+      const app = getFirebaseAppForConfig(appModule, config);
       const auth = authModule.getAuth(app);
       connectAuthEmulatorIfNeeded(authModule, auth);
 
