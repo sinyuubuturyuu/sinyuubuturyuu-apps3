@@ -1952,15 +1952,46 @@
         await new Promise((resolve) => setTimeout(resolve, 1800));
       }
 
+      async function runPostInspectionCompletionFlow(snapshot, options = {}) {
+        const dailySafetyQuiz = window.DailySafetyQuiz;
+        const shouldShowImage = !dailySafetyQuiz
+          || typeof dailySafetyQuiz.shouldShowCompletionImage !== "function"
+          || await dailySafetyQuiz.shouldShowCompletionImage();
+
+        if (shouldShowImage) {
+          await showSendFarewell(options.image || {});
+        }
+
+        await showDailySafetyQuizAfterInspection(snapshot);
+        returnToLauncherHome();
+      }
+
+      async function showDailySafetyQuizAfterInspection(snapshot) {
+        const dailySafetyQuiz = window.DailySafetyQuiz;
+        if (!dailySafetyQuiz || typeof dailySafetyQuiz.showAfterInspection !== "function") {
+          return;
+        }
+
+        try {
+          await dailySafetyQuiz.showAfterInspection({
+            source: "monthlyTireInspection",
+            driverName: normalizeDriverName(snapshot && snapshot.driverName),
+            vehicleNumber: String(snapshot && snapshot.vehicleNumber ? snapshot.vehicleNumber : "").trim()
+          });
+        } catch (error) {
+          console.warn("Failed to run daily safety quiz after monthly tire inspection:", error);
+        }
+      }
       async function showMonthlyCompleteAndReturnHome() {
         if (monthlyCompleteFlowRunning) return;
         monthlyCompleteFlowRunning = true;
         try {
-          await showSendFarewell({
-            src: MONTHLY_COMPLETE_IMAGE_SRC,
-            alt: MONTHLY_COMPLETE_IMAGE_ALT
+          await runPostInspectionCompletionFlow(current, {
+            image: {
+              src: MONTHLY_COMPLETE_IMAGE_SRC,
+              alt: MONTHLY_COMPLETE_IMAGE_ALT
+            }
           });
-          returnToLauncherHome();
         } finally {
           monthlyCompleteFlowRunning = false;
         }
@@ -2040,8 +2071,7 @@
           await showMonthlyCompleteAndReturnHome();
           return;
         }
-        await showSendFarewell();
-        returnToLauncherHome();
+        await runPostInspectionCompletionFlow(previousSnapshot);
       }
 
       async function awardDriverPointsForMonthlyTire(snapshot) {
@@ -2574,4 +2604,3 @@
         window.alert(`初期化に失敗しました: ${error.message}`);
       });
     })();
-

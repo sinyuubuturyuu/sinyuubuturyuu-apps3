@@ -12,7 +12,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./sinyuubuturyuu-icon.png" type="image/png">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
-  <link rel="stylesheet" href="./launcher.css?v=20260418a">
+  <link rel="stylesheet" href="./launcher.css?v=20260627e">
 </head>
 <body>
   <main class="launcher">
@@ -92,6 +92,20 @@
 
         <section class="settings-section">
           <div class="section-head">
+            <h3>点検後の表示</h3>
+          </div>
+          <label class="field-check">
+            <input id="completionImageDisplayEnabled" type="checkbox">
+            <span>点検完了後の画像を表示する</span>
+          </label>
+          <label class="field-check">
+            <input id="dailySafetyQuizDisplayEnabled" type="checkbox">
+            <span>点検後にクイズを表示する</span>
+          </label>
+        </section>
+
+        <section class="settings-section">
+          <div class="section-head">
             <h3>車両番号</h3>
           </div>
           <div class="field">
@@ -139,7 +153,7 @@
   <script src="./getujitiretenkenhyou/firebase/firebase-config.js?v=20260322-1"></script>
   <script src="./getujitiretenkenhyou/firebase/firebase-cloud-sync.js?v=20260423c"></script>
   <script src="./auth/firebase-auth.js?v=20260330a"></script>
-  <script src="./launcher.js?v=20260418a"></script>
+  <script src="./launcher.js?v=20260627e"></script>
 </body>
 </html>
 

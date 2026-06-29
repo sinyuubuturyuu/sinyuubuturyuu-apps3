@@ -301,6 +301,27 @@ body {
   font-weight: 700;
 }
 
+.field-check {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.field-check + .field-check {
+  border-top: 1px solid var(--line);
+}
+
+.field-check input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--primary);
+  flex: 0 0 auto;
+}
+
 .field input,
 .field-select {
   width: 100%;
