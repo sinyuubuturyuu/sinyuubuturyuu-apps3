@@ -54,6 +54,8 @@ const EXCEL_STAMP_IMAGE_SIZES = {
 };
 const MAINTENANCE_BULK_STAMP_CLICK_COUNT = 5;
 const MAINTENANCE_BULK_STAMP_CLICK_TIMEOUT_MS = 2000;
+const OPERATION_BULK_CHECK_CLICK_COUNT = 5;
+const OPERATION_BULK_CHECK_CLICK_TIMEOUT_MS = 2000;
 const EXCEL_CUSTOM_STAMP_ASSETS = {
   "若本:small": new URL("./assets/wakamoto-stamp.svg", import.meta.url).href
 };
@@ -61,6 +63,8 @@ let jsZipModulePromise = null;
 const stampSvgMarkupPromiseCache = new Map();
 let maintenanceManagerClickCount = 0;
 let maintenanceManagerClickResetTimer = null;
+let operationManagerClickCount = 0;
+let operationManagerClickResetTimer = null;
 
 const firebaseConfig = getRuntimeFirebaseConfig(window.APP_FIREBASE_CONFIG || {
   apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
@@ -1481,6 +1485,37 @@ function toggleBottomStampByDay(day, value) {
   setBottomStampByDay(day, nextValue);
 }
 
+function fillBlankChecksForWorkingDays() {
+  const daysInMonth = getDaysInSelectedMonth();
+  const itemCount = getInspectionItemCount();
+  let updatedCount = 0;
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    if (isHolidayDay(day)) {
+      continue;
+    }
+
+    for (let itemIndex = 0; itemIndex < itemCount; itemIndex += 1) {
+      const key = checkKey(itemIndex, day);
+      if (state.checks[key]) {
+        continue;
+      }
+
+      state.checks[key] = "\u30ec";
+      const cell = bodyEl.querySelector(`[data-check-key="${key}"]`);
+      setCheckCellState(cell, "\u30ec", false);
+      updatedCount += 1;
+    }
+  }
+
+  if (updatedCount > 0) {
+    syncMaintenanceRecordsByDay();
+    renderMaintenanceRecordCell();
+  }
+
+  setStatus("\u672a\u5165\u529b\u306e\u70b9\u691c\u6b04" + updatedCount + "\u4ef6\u306b\u30ec\u70b9\u3092\u5165\u308c\u307e\u3057\u305f\u3002\u4fdd\u5b58\u30dc\u30bf\u30f3\u3067\u4fdd\u5b58\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
+}
+
 function stampMaintenanceManagerForWorkingDays() {
   const daysInMonth = getDaysInSelectedMonth();
   let stampedCount = 0;
@@ -1496,6 +1531,28 @@ function stampMaintenanceManagerForWorkingDays() {
   }
 
   setStatus(`休日を除く${stampedCount}日分に整備管理者印を押しました。保存すると反映されます。`);
+}
+
+function handleOperationManagerClick() {
+  toggleStamp("operationManager", "\u5cb8\u7530");
+  operationManagerClickCount += 1;
+
+  if (operationManagerClickResetTimer) {
+    clearTimeout(operationManagerClickResetTimer);
+  }
+
+  if (operationManagerClickCount >= OPERATION_BULK_CHECK_CLICK_COUNT) {
+    operationManagerClickCount = 0;
+    operationManagerClickResetTimer = null;
+    setStamp("operationManager", "\u5cb8\u7530");
+    fillBlankChecksForWorkingDays();
+    return;
+  }
+
+  operationManagerClickResetTimer = setTimeout(() => {
+    operationManagerClickCount = 0;
+    operationManagerClickResetTimer = null;
+  }, OPERATION_BULK_CHECK_CLICK_TIMEOUT_MS);
 }
 
 function handleMaintenanceManagerClick() {
@@ -3651,7 +3708,7 @@ document.getElementById("saveBtn").addEventListener("click", () => {
   saveRecord().catch((err) => setStatus(`保存失敗: ${err.message}`, true));
 });
 
-document.getElementById("operationManagerSlot").addEventListener("click", () => toggleStamp("operationManager", "岸田"));
+document.getElementById("operationManagerSlot").addEventListener("click", handleOperationManagerClick);
 document.getElementById("maintenanceManagerSlot").addEventListener("click", handleMaintenanceManagerClick);
 
 exportExcelBtnEl.addEventListener("click", () => {
