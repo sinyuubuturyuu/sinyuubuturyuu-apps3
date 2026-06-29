@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="../version-sync.js"></script>
+  <script>
+    (function () {
+      const versionSync = window.SinyuubuturyuuPcVersion || null;
+      const version = versionSync ? versionSync.ensureLatestVersion("20260627b") : "20260627b";
+      if (!version) return;
+      window.__SINYUUBUTURYUU_PC_VERSION__ = version;
+    })();
+  </script>
+  <title>今日の安全ワンポイント管理 | シンユウ物流パソコン用</title>
+  <meta name="description" content="点検後に表示する今日の安全ワンポイントクイズを管理する画面">
+  <link rel="icon" href="../icons/icon-sinyuubuturyuu-pc.png" type="image/png">
+  <link rel="apple-touch-icon" href="../icons/icon-sinyuubuturyuu-pc.png">
+  <link rel="manifest" href="../manifest.webmanifest?v=20260404b">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="stylesheet" href="../shell.css?v=20260404b">
+  <link rel="stylesheet" href="./driver-points-kanri.css?v=20260404a">
+  <link rel="stylesheet" href="./daily-safety-quiz.css?v=20260627a">
+</head>
+<body class="shell-body">
+  <main class="shell-page">
+    <section class="shell-card quiz-admin-card">
+      <div class="settings-topbar">
+        <a class="back-link" href="../index.html">トップへ戻る</a>
+        <h1>今日の安全ワンポイント管理</h1>
+      </div>
+
+      <p id="statusText" class="status-text" aria-live="polite"></p>
+
+      <div class="quiz-admin-grid">
+        <section class="quiz-admin-section" aria-labelledby="formHeading">
+          <h2 id="formHeading">問題の追加・編集</h2>
+          <p class="quiz-admin-help">正解時は解説を表示せず、不正解時だけ解説を表示します。出題月は複数選べます。</p>
+
+          <form id="quizForm" class="quiz-form">
+            <label class="field">
+              <span>カテゴリ</span>
+              <select id="categoryInput" class="field-select" required>
+                <option value="交通安全">交通安全</option>
+                <option value="車両整備">車両整備</option>
+                <option value="運行管理">運行管理</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>問題文</span>
+              <textarea id="questionInput" rows="3" required></textarea>
+            </label>
+
+            <div class="field">
+              <span>選択肢と正解</span>
+              <div class="choice-grid">
+                <label class="choice-row">
+                  <strong>1</strong>
+                  <input id="choice0Input" type="text" required>
+                  <input type="radio" name="correctChoice" value="0" checked aria-label="1を正解にする">
+                </label>
+                <label class="choice-row">
+                  <strong>2</strong>
+                  <input id="choice1Input" type="text" required>
+                  <input type="radio" name="correctChoice" value="1" aria-label="2を正解にする">
+                </label>
+                <label class="choice-row">
+                  <strong>3</strong>
+                  <input id="choice2Input" type="text" required>
+                  <input type="radio" name="correctChoice" value="2" aria-label="3を正解にする">
+                </label>
+                <label class="choice-row">
+                  <strong>4</strong>
+                  <input id="choice3Input" type="text" required>
+                  <input type="radio" name="correctChoice" value="3" aria-label="4を正解にする">
+                </label>
+              </div>
+            </div>
+
+            <label class="field">
+              <span>不正解時の解説</span>
+              <textarea id="explanationInput" rows="4" required></textarea>
+            </label>
+
+            <div class="field">
+              <span>出題月</span>
+              <label class="inline-check">
+                <input id="allMonthsInput" type="checkbox" checked>
+                <span>いつでも</span>
+              </label>
+              <div id="monthChecks" class="month-checks" aria-label="出題月"></div>
+            </div>
+
+            <label class="inline-check">
+              <input id="enabledInput" type="checkbox" checked>
+              <span>有効にする</span>
+            </label>
+
+            <div class="button-row">
+              <button id="saveButton" class="mini-button primary" type="submit">保存</button>
+              <button id="cancelEditButton" class="mini-button" type="button" hidden>編集をやめる</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="quiz-admin-section" aria-labelledby="listHeading">
+          <div class="quiz-toolbar">
+            <div>
+              <h2 id="listHeading">問題一覧</h2>
+              <p id="quizCountText" class="status-text"></p>
+            </div>
+            <button id="sampleButton" class="mini-button" type="button">サンプル追加</button>
+            <button id="reloadButton" class="mini-button" type="button">再読込</button>
+          </div>
+          <div id="quizList" class="quiz-list"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script src="../launcher-window.js?v=20260330a"></script>
+  <script>
+    (function () {
+      const topBackLink = document.querySelector(".back-link");
+      if (window.launcherWindow) {
+        window.launcherWindow.maximizeCurrentWindowIfRequested();
+        window.launcherWindow.bindReturnToLauncher(topBackLink);
+      }
+    })();
+  </script>
+  <script src="../shared-settings.js?v=20260330a"></script>
+  <script src="../getujitiretenkenhyou-pc/firebase/firebase-config.js?v=20260404b"></script>
+  <script src="./firebase-config.js?v=20260404b"></script>
+  <script src="../auth/firebase-auth.js?v=20260404b"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script>
+    (function () {
+      const version = window.__SINYUUBUTURYUU_PC_VERSION__
+        || (window.SinyuubuturyuuPcVersion ? window.SinyuubuturyuuPcVersion.getVersion("20260627b") : "20260627b");
+      const launcherUrl = new URL("../index.html", window.location.href);
+      launcherUrl.searchParams.set("returnTo", window.location.href);
+
+      const authApi = window.DevFirebaseAuth;
+      if (!authApi || typeof authApi.requireUser !== "function") {
+        console.warn("Auth bootstrap was not available.");
+        window.location.replace(launcherUrl.toString());
+        return;
+      }
+
+      authApi.requireUser({ redirectTo: launcherUrl.toString(), waitMs: 5000 }).then(function (user) {
+        if (!user) return;
+        const script = document.createElement("script");
+        script.src = "./daily-safety-quiz.js?v=" + version;
+        document.body.appendChild(script);
+      }).catch(function (error) {
+        console.warn("Auth bootstrap failed:", error);
+        window.location.replace(launcherUrl.toString());
+      });
+    })();
+  </script>
+</body>
+</html>

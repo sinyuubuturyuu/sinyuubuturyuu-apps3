@@ -58,6 +58,11 @@ const DAILY_INSPECTION_MAX_SELECTABLE_MONTH_COUNT = 4;
 const DAILY_INSPECTION_FIREBASE_REQUIRED_KEYS = ["apiKey", "authDomain", "projectId", "appId"];
 const DAILY_INSPECTION_CHECK_SEQUENCE = ["", "レ", "×", "▲"];
 const DAILY_INSPECTION_HOLIDAY_CHECK = "休";
+const DAILY_SAFETY_QUIZ_DISPLAY_SETTINGS_KEY = "sinyuubuturyuu.dailySafetyQuizDisplaySettings.v1";
+const DEFAULT_DAILY_SAFETY_QUIZ_DISPLAY_SETTINGS = Object.freeze({
+  quizEnabled: true,
+  completionImageEnabled: true,
+});
 const DAILY_INSPECTION_ITEM_IDS = Object.freeze([
   "brake_pedal",
   "brake_fluid",
@@ -143,6 +148,8 @@ const elements = {
   closeSettingsButton: document.getElementById("closeSettingsButton"),
   confirmSettingsButton: document.getElementById("confirmSettingsButton"),
   themeMode: document.getElementById("themeMode"),
+  completionImageDisplayEnabled: document.getElementById("completionImageDisplayEnabled"),
+  dailySafetyQuizDisplayEnabled: document.getElementById("dailySafetyQuizDisplayEnabled"),
   vehicleSelect: document.getElementById("vehicleSelect"),
   driverAutoDisplay: document.getElementById("driverAutoDisplay"),
   truckTypeAutoDisplay: document.getElementById("truckTypeAutoDisplay"),
@@ -451,8 +458,42 @@ function renderCurrentSelection() {
 
 function renderSettings() {
   elements.themeMode.value = state.shared.theme;
+  renderDisplaySettings();
   renderVehicleSelect();
   renderAssignedProfile();
+}
+
+function readDailySafetyQuizDisplaySettings() {
+  try {
+    const raw = window.localStorage.getItem(DAILY_SAFETY_QUIZ_DISPLAY_SETTINGS_KEY);
+    const data = raw ? JSON.parse(raw) : {};
+    return {
+      quizEnabled: data.quizEnabled !== false,
+      completionImageEnabled: data.completionImageEnabled !== false,
+    };
+  } catch {
+    return { ...DEFAULT_DAILY_SAFETY_QUIZ_DISPLAY_SETTINGS };
+  }
+}
+
+function saveDailySafetyQuizDisplaySettings(patch) {
+  const current = readDailySafetyQuizDisplaySettings();
+  const next = {
+    ...current,
+    ...(patch || {}),
+  };
+  window.localStorage.setItem(DAILY_SAFETY_QUIZ_DISPLAY_SETTINGS_KEY, JSON.stringify(next));
+  return next;
+}
+
+function renderDisplaySettings() {
+  const settings = readDailySafetyQuizDisplaySettings();
+  if (elements.completionImageDisplayEnabled) {
+    elements.completionImageDisplayEnabled.checked = settings.completionImageEnabled !== false;
+  }
+  if (elements.dailySafetyQuizDisplayEnabled) {
+    elements.dailySafetyQuizDisplayEnabled.checked = settings.quizEnabled !== false;
+  }
 }
 
 function applyTheme() {
@@ -846,6 +887,24 @@ function bindEvents() {
     renderAll();
     setStatus("表示モードを更新しました。");
   });
+  if (elements.completionImageDisplayEnabled) {
+    elements.completionImageDisplayEnabled.addEventListener("change", (event) => {
+      saveDailySafetyQuizDisplaySettings({
+        completionImageEnabled: Boolean(event.target.checked),
+      });
+      renderDisplaySettings();
+      setStatus("\u70b9\u691c\u5f8c\u306e\u753b\u50cf\u8868\u793a\u8a2d\u5b9a\u3092\u66f4\u65b0\u3057\u307e\u3057\u305f\u3002");
+    });
+  }
+  if (elements.dailySafetyQuizDisplayEnabled) {
+    elements.dailySafetyQuizDisplayEnabled.addEventListener("change", (event) => {
+      saveDailySafetyQuizDisplaySettings({
+        quizEnabled: Boolean(event.target.checked),
+      });
+      renderDisplaySettings();
+      setStatus("\u70b9\u691c\u5f8c\u306e\u30af\u30a4\u30ba\u8868\u793a\u8a2d\u5b9a\u3092\u66f4\u65b0\u3057\u307e\u3057\u305f\u3002");
+    });
+  }
   if (elements.vehicleSelect) {
     elements.vehicleSelect.addEventListener("change", (event) => {
       const value = String(event.target.value || "").trim();

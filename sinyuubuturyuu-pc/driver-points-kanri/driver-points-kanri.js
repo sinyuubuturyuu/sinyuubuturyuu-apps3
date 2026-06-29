@@ -345,13 +345,13 @@
   async function loadLeaderboard() {
     if (!state.pointsDb) {
       elements.leaderboardStatus.textContent = "Firebase に接続できていません。";
-      elements.leaderboardBody.innerHTML = '<tr><td colspan="3">読み込みに失敗しました。</td></tr>';
+      elements.leaderboardBody.innerHTML = '<tr><td colspan="5">読み込みに失敗しました。</td></tr>';
       return;
     }
 
     state.loadingLeaderboard = true;
     elements.leaderboardStatus.textContent = "一覧を読み込んでいます...";
-    elements.leaderboardBody.innerHTML = '<tr><td colspan="3">読み込み中...</td></tr>';
+    elements.leaderboardBody.innerHTML = '<tr><td colspan="5">読み込み中...</td></tr>';
     syncButtons();
 
     try {
@@ -387,7 +387,7 @@
     } catch (error) {
       console.warn("Failed to load leaderboard:", error);
       elements.leaderboardStatus.textContent = "一覧の読み込みに失敗しました: " + formatError(error);
-      elements.leaderboardBody.innerHTML = '<tr><td colspan="3">一覧の読み込みに失敗しました。</td></tr>';
+      elements.leaderboardBody.innerHTML = '<tr><td colspan="5">一覧の読み込みに失敗しました。</td></tr>';
     } finally {
       state.loadingLeaderboard = false;
       syncButtons();
@@ -449,16 +449,22 @@
       }
 
       const points = getRecordPoints(record, schema);
+      const quizPoints = getRecordQuizPoints(record);
+      const inspectionPoints = Math.max(0, points - quizPoints);
       if (points === 0) {
         return;
       }
       const existing = totalsByDriver.get(driverKey);
       if (existing) {
         existing.points += points;
+        existing.inspectionPoints += inspectionPoints;
+        existing.quizPoints += quizPoints;
         existing.breakdowns.push({
           vehicleKey: resolveRecordVehicleKey(record.data),
           vehicleLabel: resolveRecordVehicleLabel(record.data),
-          points: points
+          points: points,
+          inspectionPoints: inspectionPoints,
+          quizPoints: quizPoints
         });
         return;
       }
@@ -473,10 +479,14 @@
         name: meta.name,
         order: meta.order,
         points: points,
+        inspectionPoints: inspectionPoints,
+        quizPoints: quizPoints,
         breakdowns: [{
           vehicleKey: resolveRecordVehicleKey(record.data),
           vehicleLabel: resolveRecordVehicleLabel(record.data),
-          points: points
+          points: points,
+          inspectionPoints: inspectionPoints,
+          quizPoints: quizPoints
         }]
       });
     });
@@ -497,7 +507,7 @@
 
     if (!rows.length) {
       elements.leaderboardStatus.textContent = "表示できる社員データがありません。";
-      elements.leaderboardBody.innerHTML = '<tr><td colspan="3">表示できる社員データがありません。</td></tr>';
+      elements.leaderboardBody.innerHTML = '<tr><td colspan="5">表示できる社員データがありません。</td></tr>';
       return;
     }
 
@@ -531,6 +541,8 @@
           + '<span class="leaderboard-name-text">' + escapeHtml(row.name) + "</span>"
           + (breakdownMarkup ? '<span class="leaderboard-breakdown-list">' + breakdownMarkup + "</span>" : "")
           + "</div></td>",
+        '<td class="leaderboard-points">' + String(row.inspectionPoints || 0) + "</td>",
+        '<td class="leaderboard-points">' + String(row.quizPoints || 0) + "</td>",
         '<td class="leaderboard-points">' + String(row.points) + "</td>",
         "</tr>"
       ].join("");
@@ -640,6 +652,11 @@
   function getRecordPoints(record, schema) {
     const fieldName = resolvePointsFieldName(record && record.data ? record.data : null, schema);
     return getNumericValue(record && record.data ? record.data[fieldName] : undefined);
+  }
+
+  function getRecordQuizPoints(record) {
+    const data = record && record.data ? record.data : {};
+    return getNumericValue(data.dailySafetyQuizPoints ?? data.dailySafetyQuizTotalPoints);
   }
 
   function uniqueFieldNames(values) {

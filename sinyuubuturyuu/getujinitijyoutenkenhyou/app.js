@@ -450,8 +450,7 @@ async function submitSend(sendPlan = null, maintenanceNote = "") {
     });
 
     if (!completedAllMonths) {
-      await showSendFarewell();
-      returnToLauncherHome();
+      await runPostInspectionCompletionFlow();
     }
   } catch (error) {
     setInspectionStatus(`送信に失敗しました: ${error.message}`, true);
@@ -1067,6 +1066,36 @@ async function showSendFarewell(options = {}) {
   await new Promise((resolve) => setTimeout(resolve, 1800));
 }
 
+async function runPostInspectionCompletionFlow(options = {}) {
+  const dailySafetyQuiz = window.DailySafetyQuiz;
+  const shouldShowImage = !dailySafetyQuiz
+    || typeof dailySafetyQuiz.shouldShowCompletionImage !== "function"
+    || await dailySafetyQuiz.shouldShowCompletionImage();
+
+  if (shouldShowImage) {
+    await showSendFarewell(options.image || {});
+  }
+
+  await showDailySafetyQuizAfterInspection();
+  returnToLauncherHome();
+}
+
+async function showDailySafetyQuizAfterInspection() {
+  const dailySafetyQuiz = window.DailySafetyQuiz;
+  if (!dailySafetyQuiz || typeof dailySafetyQuiz.showAfterInspection !== "function") {
+    return;
+  }
+
+  try {
+    await dailySafetyQuiz.showAfterInspection({
+      source: "dailyInspection",
+      driverName: String(state.session?.driver || state.sharedSelection?.driver || "").trim(),
+      vehicleNumber: String(state.session?.vehicle || state.sharedSelection?.vehicle || "").trim()
+    });
+  } catch (error) {
+    console.warn("Failed to run daily safety quiz after daily inspection:", error);
+  }
+}
 async function showMonthlyCompleteAndReturnHome() {
   if (state.monthlyCompleteFlowRunning) {
     return;
@@ -1078,11 +1107,12 @@ async function showMonthlyCompleteAndReturnHome() {
   const previousAlt = image ? image.getAttribute("alt") || "" : "";
 
   try {
-    await showSendFarewell({
-      src: MONTHLY_COMPLETE_IMAGE_SRC,
-      alt: MONTHLY_COMPLETE_IMAGE_ALT
+    await runPostInspectionCompletionFlow({
+      image: {
+        src: MONTHLY_COMPLETE_IMAGE_SRC,
+        alt: MONTHLY_COMPLETE_IMAGE_ALT
+      }
     });
-    returnToLauncherHome();
   } finally {
     if (image) {
       image.src = previousSrc;
@@ -1935,5 +1965,3 @@ function canAccessServiceWorkerApis() {
 
   return window.location.protocol === "http:" || window.location.protocol === "https:";
 }
-
-
