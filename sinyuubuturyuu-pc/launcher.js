@@ -14,6 +14,7 @@ const elements = {
   dailyInspectionButton: document.getElementById("dailyInspectionButton"),
   driverPointsButton: document.getElementById("driverPointsButton"),
   dataAdjustmentButton: document.getElementById("dataAdjustmentButton"),
+  dailySafetyQuizButton: document.getElementById("dailySafetyQuizButton"),
   settingsButton: document.getElementById("settingsButton")
 };
 
@@ -224,6 +225,7 @@ function setVersionedLinks() {
   setVersionedHref(elements.dailyInspectionButton, "./getujinitijyoutenkenhyou-pc/index.html");
   setVersionedHref(elements.driverPointsButton, "./driver-points-kanri/index.html");
   setVersionedHref(elements.dataAdjustmentButton, "./driver-points-kanri/data-adjustment.html");
+  setVersionedHref(elements.dailySafetyQuizButton, "./driver-points-kanri/daily-safety-quiz.html");
   setVersionedHref(elements.settingsButton, "./settings.html");
 }
 
@@ -243,6 +245,7 @@ function bindLauncherWindowLinks() {
   window.launcherWindow.bindInspectionLaunch(elements.dailyInspectionButton);
   window.launcherWindow.bindLauncherSizedLaunch(elements.driverPointsButton);
   window.launcherWindow.bindLauncherSizedLaunch(elements.dataAdjustmentButton);
+  window.launcherWindow.bindLauncherSizedLaunch(elements.dailySafetyQuizButton);
   window.launcherWindow.bindLauncherSizedLaunch(elements.settingsButton);
 }
 

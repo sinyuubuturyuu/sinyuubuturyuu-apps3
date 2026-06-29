@@ -173,6 +173,11 @@
     window.localStorage.setItem(LAST_AWARD_KEY, new Date().toISOString());
   }
 
+  function notifyPointAwarded() {
+    markPointAwarded();
+    requestBadgeRefresh({ force: true, reason: 'external_award', delayMs: 0 });
+  }
+
   function getCachedSummary(identity) {
     const entry = uiState.summaryCache.get(identity.summaryKey);
     if (!entry) {
@@ -521,12 +526,16 @@
     }
 
     const data = snapshot.exists() ? snapshot.data() : {};
+    const points = Number(data.totalPoints || 0);
+    const quizPoints = Number(data.dailySafetyQuizPoints || 0);
     const summary = {
       ok: true,
       enabled: true,
       driverName: identity.driverName,
       vehicleNumber: identity.vehicleNumber,
-      points: Number(data.totalPoints || 0)
+      points,
+      inspectionPoints: Math.max(0, points - quizPoints),
+      quizPoints
     };
     setCachedSummary(identity, summary);
     return summary;
@@ -690,6 +699,10 @@
     style.textContent = [
       ".driver-points-inline { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }",
       ".driver-points-name { min-width: 0; }",
+      ".driver-points-selection-row { flex-wrap: wrap; }",
+      ".driver-points-selection-row #currentDriverName { white-space: nowrap; word-break: keep-all; }",
+      ".driver-points-row { display: flex; justify-content: flex-end; flex-basis: 100%; width: 100%; margin-top: 6px; }",
+      ".driver-points-row[hidden] { display: none !important; }",
       ".driver-points-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 60px; min-height: 28px; padding: 4px 10px; border-radius: 999px; background: rgba(23, 105, 210, 0.12); color: var(--primary, #1769d2); font-size: 0.82rem; font-weight: 800; line-height: 1; }",
       ".driver-points-badge[hidden] { display: none !important; }",
       ".driver-points-section-head { display: flex; align-items: center; justify-content: flex-start; gap: 8px; flex-wrap: wrap; }",
@@ -806,14 +819,30 @@
     }
     ensureStyle();
 
-    let wrapper = nameEl.parentElement;
-    if (!wrapper || !wrapper.classList.contains("driver-points-inline")) {
-      wrapper = document.createElement("span");
-      wrapper.className = "current-selection-value driver-points-inline";
-      nameEl.parentNode.insertBefore(wrapper, nameEl);
-      wrapper.appendChild(nameEl);
-      nameEl.classList.remove("current-selection-value");
-      nameEl.classList.add("driver-points-name");
+    const oldWrapper = nameEl.parentElement && nameEl.parentElement.classList.contains("driver-points-inline")
+      ? nameEl.parentElement
+      : null;
+    if (oldWrapper && oldWrapper.parentNode) {
+      oldWrapper.parentNode.insertBefore(nameEl, oldWrapper);
+      oldWrapper.remove();
+    }
+
+    const selectionRow = nameEl.closest(".current-selection-row") || nameEl.parentElement;
+    if (selectionRow) {
+      selectionRow.classList.add("driver-points-selection-row");
+    }
+    nameEl.classList.add("current-selection-value");
+    nameEl.classList.remove("driver-points-name");
+
+    let row = document.getElementById("currentDriverPointsRow");
+    if (!row) {
+      row = document.createElement("span");
+      row.id = "currentDriverPointsRow";
+      row.className = "driver-points-row";
+      row.hidden = true;
+      nameEl.insertAdjacentElement("afterend", row);
+    } else if (row.previousElementSibling !== nameEl) {
+      nameEl.insertAdjacentElement("afterend", row);
     }
 
     let badge = document.getElementById("currentDriverPoints");
@@ -822,10 +851,12 @@
       badge.id = "currentDriverPoints";
       badge.className = "driver-points-badge";
       badge.hidden = true;
-      wrapper.appendChild(badge);
+      row.appendChild(badge);
+    } else if (badge.parentElement !== row) {
+      row.appendChild(badge);
     }
 
-    return { nameEl, vehicleEl, badge };
+    return { nameEl, vehicleEl, row, badge };
   }
 
   function getCurrentSelection(elements) {
@@ -992,6 +1023,10 @@
     if (!badge) {
       return;
     }
+    const row = document.getElementById("currentDriverPointsRow");
+    if (row) {
+      row.hidden = true;
+    }
     badge.hidden = true;
     badge.textContent = "";
     badge.removeAttribute("title");
@@ -1034,6 +1069,9 @@
     }
 
     const refreshToken = ++uiState.badgeRefreshToken;
+    if (elements.row) {
+      elements.row.hidden = false;
+    }
     elements.badge.hidden = false;
     elements.badge.textContent = "...";
     elements.badge.setAttribute("aria-busy", "true");
@@ -1049,7 +1087,7 @@
         hideBadge();
         return;
       }
-      elements.badge.textContent = `${summary.points}pt`;
+      elements.badge.textContent = `点検 ${summary.inspectionPoints || 0}pt / クイズ ${summary.quizPoints || 0}pt`;
       elements.badge.title = `${summary.vehicleNumber} / ${summary.driverName} のポイント`;
       uiState.lastBadgeSyncAt = Date.now();
     } catch (error) {
@@ -1148,6 +1186,7 @@
     readDriverPoints,
     awardDailyInspection,
     awardMonthlyTireInspection,
+    notifyPointAwarded,
     mountLauncherUi
   });
 
