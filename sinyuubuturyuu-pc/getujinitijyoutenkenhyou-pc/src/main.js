@@ -1307,20 +1307,12 @@ function syncHolidayChecks() {
 
 async function markHolidayForDay(day) {
   if (isHolidayDay(day)) {
-    if (!await confirmInPage(`${day}日の休日設定を解除しますか？`)) {
-      return;
-    }
-
     state.holidayDays = state.holidayDays.filter((holidayDay) => holidayDay !== day);
     clearHolidayChecks(day);
     setHolidayHeaderState(day, false);
     syncMaintenanceRecordsByDay();
     renderMaintenanceRecordCell();
     setStatus(`${day}日の休日設定を解除しました。保存すると反映されます。`);
-    return;
-  }
-
-  if (!await confirmInPage(`${day}日を休日にしますか？`)) {
     return;
   }
 
