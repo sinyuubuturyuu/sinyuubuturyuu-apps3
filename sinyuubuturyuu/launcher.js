@@ -39,6 +39,7 @@ const MONTHLY_COMPLETE_IMAGE_ALT = "Monthly inspection complete.";
 const DAILY_INSPECTION_COMPLETE_IMAGE_SRC = "./getujinitijyoutenkenhyou/icons/monthly-complete.png";
 const DAILY_INSPECTION_COMPLETE_IMAGE_ALT = "Daily inspection complete for this month.";
 const LAUNCH_RETRY_MESSAGE = "通信状態を確認して、もう一度タップしてください。";
+const LAUNCH_FALLBACK_MESSAGE = "完了状況を確認できないため、そのまま開きます。";
 const DAILY_INSPECTION_FIREBASE_CONFIG = Object.freeze(getRuntimeFirebaseConfig({
   apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
   authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
@@ -890,6 +891,12 @@ function showLaunchStatus(message) {
   elements.launchStatus.hidden = false;
 }
 
+function isAuthLaunchError(error) {
+  const message = String(error && error.message || "");
+  return message.includes("ログインしてください")
+    || message.includes("認証モジュール");
+}
+
 function setCurrentVehicleNumber(value) {
   sharedSettings.updateCurrent({ vehicleNumber: value });
   renderAll();
@@ -1081,7 +1088,8 @@ async function openMonthlyApp() {
     await stabilizeLauncherSelection(user, { refresh: true });
     const result = await checkMonthlyCompleteStatus();
     if (!result.ok) {
-      showLaunchStatus(LAUNCH_RETRY_MESSAGE);
+      showLaunchStatus(LAUNCH_FALLBACK_MESSAGE);
+      openApp(APP_CONFIG.app1Path);
       return;
     }
 
@@ -1098,7 +1106,12 @@ async function openMonthlyApp() {
     openApp(APP_CONFIG.app1Path);
   } catch (error) {
     console.warn("Failed to launch monthly inspection app:", error);
-    showLaunchStatus(LAUNCH_RETRY_MESSAGE);
+    if (isAuthLaunchError(error)) {
+      showLaunchStatus(LAUNCH_RETRY_MESSAGE);
+    } else {
+      showLaunchStatus(LAUNCH_FALLBACK_MESSAGE);
+      openApp(APP_CONFIG.app1Path);
+    }
   } finally {
     state.monthlyLaunchBusy = false;
     elements.app1Button.disabled = false;
@@ -1533,7 +1546,8 @@ async function openDailyInspectionApp() {
     await stabilizeLauncherSelection(user, { refresh: true });
     const result = await checkDailyInspectionCompleteStatus();
     if (!result.ok) {
-      showLaunchStatus(LAUNCH_RETRY_MESSAGE);
+      showLaunchStatus(LAUNCH_FALLBACK_MESSAGE);
+      openApp(APP_CONFIG.app2Path);
       return;
     }
 
@@ -1550,7 +1564,12 @@ async function openDailyInspectionApp() {
     openApp(APP_CONFIG.app2Path);
   } catch (error) {
     console.warn("Failed to launch daily inspection app:", error);
-    showLaunchStatus(LAUNCH_RETRY_MESSAGE);
+    if (isAuthLaunchError(error)) {
+      showLaunchStatus(LAUNCH_RETRY_MESSAGE);
+    } else {
+      showLaunchStatus(LAUNCH_FALLBACK_MESSAGE);
+      openApp(APP_CONFIG.app2Path);
+    }
   } finally {
     state.dailyLaunchBusy = false;
     elements.app2Button.disabled = false;
