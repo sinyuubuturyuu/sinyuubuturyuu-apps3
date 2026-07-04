@@ -20,7 +20,7 @@
   <meta name="theme-color" content="#ffffff">
   <link rel="stylesheet" href="../shell.css?v=20260404b">
   <link rel="stylesheet" href="./driver-points-kanri.css?v=20260404a">
-  <link rel="stylesheet" href="./data-adjustment.css?v=20260404a">
+  <link rel="stylesheet" href="./data-adjustment.css?v=20260404c">
 </head>
 <body class="shell-body">
   <main class="shell-page adjustment-page">
@@ -97,14 +97,16 @@
               <tr>
                 <th>選択</th>
                 <th>日付</th>
-                <th>種別</th>
-                <th>ポイント</th>
-                <th>識別情報</th>
+                <th>削除対象</th>
+                <th>日常点検ポイント</th>
+                <th>タイヤ点検ポイント</th>
+                <th>その他ポイント</th>
+                <th>確認情報</th>
               </tr>
             </thead>
             <tbody id="eventHistoryBody">
               <tr>
-                <td colspan="5">対象を選択してください。</td>
+                <td colspan="7">対象を選択してください。</td>
               </tr>
             </tbody>
           </table>
@@ -112,14 +114,14 @@
       </section>
 
       <div class="button-row">
-        <button id="reviewButton" class="mini-button primary" type="button">関連データを確認</button>
+        <button id="reviewButton" class="mini-button primary" type="button">削除内容を確認</button>
         <p id="statusText" class="status-text" aria-live="polite"></p>
       </div>
 
       <section id="reviewSection" class="adjustment-section review-section" aria-labelledby="reviewHeading" hidden>
         <div class="section-head">
           <h2 id="reviewHeading">削除前確認</h2>
-          <p>整合性がOKの場合のみ削除を実行できます。</p>
+          <p>選択した日付の点検データと点検由来ポイントをまとめて削除し、ポイントサマリーを再計算します。</p>
         </div>
 
         <div class="review-grid">
