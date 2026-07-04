@@ -58,7 +58,8 @@
 }
 
 .table-wrap {
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
   border: 1px solid var(--line);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.92);
@@ -66,7 +67,7 @@
 
 .event-table {
   width: 100%;
-  min-width: 760px;
+  min-width: 1180px;
   border-collapse: collapse;
 }
 
@@ -89,7 +90,8 @@
   border-bottom: 0;
 }
 
-.event-table input[type="radio"] {
+.event-table input[type="radio"],
+.event-table input[type="checkbox"] {
   width: 18px;
   height: 18px;
 }

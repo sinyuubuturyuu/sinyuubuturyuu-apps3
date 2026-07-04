@@ -63,7 +63,7 @@
     dailyRecords: [],
     tireRecords: [],
     monthsWithData: new Set(),
-    selectedEventId: "",
+    selectedDayKeys: new Set(),
     review: null
   };
 
@@ -82,10 +82,18 @@
     });
     elements.eventHistoryBody.addEventListener("change", function (event) {
       const target = event.target;
-      if (!target || target.name !== "eventChoice") {
+      if (!target || target.name !== "dayChoice") {
         return;
       }
-      state.selectedEventId = normalizeText(target.value);
+      const dayKey = normalizeText(target.value);
+      if (!dayKey) {
+        return;
+      }
+      if (target.checked) {
+        state.selectedDayKeys.add(dayKey);
+      } else {
+        state.selectedDayKeys.delete(dayKey);
+      }
       resetReview();
       syncButtons();
     });
@@ -282,7 +290,7 @@
   }
 
   function handleSelectionChanged() {
-    state.selectedEventId = "";
+    state.selectedDayKeys.clear();
     resetReview();
     syncButtons();
 
@@ -644,33 +652,233 @@
 
   function renderEventHistory() {
     if (!hasBaseSelection()) {
-      elements.eventHistoryBody.innerHTML = '<tr><td colspan="5">対象を選択してください。</td></tr>';
-      return;
-    }
-    if (!state.monthEvents.length) {
-      elements.eventHistoryBody.innerHTML = '<tr><td colspan="5">対象月のポイントイベントはありません。</td></tr>';
+      elements.eventHistoryBody.innerHTML = '<tr><td colspan="7">対象を選択してください。</td></tr>';
       return;
     }
 
-    elements.eventHistoryBody.innerHTML = state.monthEvents.map(function (eventRecord) {
-      const data = eventRecord.data || {};
-      const checked = state.selectedEventId === eventRecord.id ? " checked" : "";
+    const candidates = buildDateDeleteCandidates();
+    if (!candidates.length) {
+      elements.eventHistoryBody.innerHTML = '<tr><td colspan="7">対象月の削除候補日はありません。</td></tr>';
+      return;
+    }
+
+    elements.eventHistoryBody.innerHTML = candidates.map(function (candidate) {
+      const dayKey = String(candidate.day);
+      const checked = state.selectedDayKeys.has(dayKey) ? " checked" : "";
+      const targetLabels = buildCandidateTargetLabels(candidate);
+      const dailyPointLabels = buildInspectionPointLabels(candidate.dailyEvents, DAILY_SOURCE);
+      const tirePointLabels = buildInspectionPointLabels(candidate.tireEvents, TIRE_SOURCE);
+      const otherPointLabels = candidate.otherEvents.length
+        ? ["削除対象外 " + String(candidate.otherEvents.length) + "件"]
+        : ["なし"];
       return [
         "<tr>",
-        '<td><input type="radio" name="eventChoice" value="' + escapeHtml(eventRecord.id) + '"' + checked + "></td>",
-        "<td>" + escapeHtml(getEventDateLabel(data)) + "</td>",
-        '<td><span class="event-source">' + escapeHtml(getEventSourceLabel(data.source)) + "</span></td>",
-        '<td>' + escapeHtml(formatSignedPoints(getNumericValue(data.points))) + "</td>",
+        '<td><input type="checkbox" name="dayChoice" value="' + escapeHtml(dayKey) + '"' + checked + "></td>",
+        "<td>" + escapeHtml(formatMonthLabel(elements.monthSelect.value) + " " + candidate.day + "日") + "</td>",
+        '<td><div class="event-meta">' + targetLabels.map(function (label) {
+          return "<span>" + escapeHtml(label) + "</span>";
+        }).join("") + "</div></td>",
+        '<td><div class="event-meta">' + renderMetaSpans(dailyPointLabels) + "</div></td>",
+        '<td><div class="event-meta">' + renderMetaSpans(tirePointLabels) + "</div></td>",
+        '<td><div class="event-meta">' + renderMetaSpans(otherPointLabels) + "</div></td>",
         '<td><div class="event-meta">'
-          + '<span>ID: ' + escapeHtml(eventRecord.id) + "</span>"
-          + '<span>月: ' + escapeHtml(getEventMonth(data) || "-") + " / 日: " + escapeHtml(getEventDay(data) || "-") + "</span>"
-          + '<span>メモ: ' + escapeHtml(normalizeText(data.memo) || "-") + "</span>"
+          + renderMetaSpans(candidate.details)
           + "</div></td>",
         "</tr>"
       ].join("");
     }).join("");
   }
 
+  function buildDateDeleteCandidates() {
+    const candidatesByDay = new Map();
+
+    state.dailyRecords.forEach(function (record) {
+      collectDailyRecordDays([record]).forEach(function (day) {
+        const candidate = ensureDateDeleteCandidate(candidatesByDay, day);
+        candidate.dailyDays.push({ record: record, day: day });
+        candidate.details.push("日次: " + record.id);
+      });
+    });
+
+    state.tireRecords.forEach(function (record) {
+      const day = getTireRecordDay(record.data);
+      if (!day) {
+        return;
+      }
+      const candidate = ensureDateDeleteCandidate(candidatesByDay, day);
+      candidate.tireRecords.push(record);
+      candidate.details.push("月次タイヤ: " + record.id);
+    });
+
+    state.monthEvents.forEach(function (eventRecord) {
+      const data = eventRecord.data || {};
+      const source = normalizeText(data.source);
+      if (source !== DAILY_SOURCE && source !== TIRE_SOURCE) {
+        return;
+      }
+      const day = getInspectionEventDay(data);
+      if (!day) {
+        return;
+      }
+      const candidate = ensureDateDeleteCandidate(candidatesByDay, day);
+      candidate.inspectionEvents.push(eventRecord);
+      if (source === DAILY_SOURCE) {
+        candidate.dailyEvents.push(eventRecord);
+      } else {
+        candidate.tireEvents.push(eventRecord);
+      }
+      candidate.pointTotal += getNumericValue(data.points);
+      candidate.details.push(describeInspectionPointEvent(eventRecord));
+    });
+
+    state.monthEvents.forEach(function (eventRecord) {
+      const data = eventRecord.data || {};
+      const source = normalizeText(data.source);
+      if (source === DAILY_SOURCE || source === TIRE_SOURCE) {
+        return;
+      }
+      const day = normalizeDayNumber(getEventDay(data));
+      if (day && candidatesByDay.has(String(day))) {
+        candidatesByDay.get(String(day)).otherEvents.push(eventRecord);
+      }
+    });
+
+    return Array.from(candidatesByDay.values()).sort(function (left, right) {
+      return left.day - right.day;
+    });
+  }
+
+  function buildCandidateTargetLabels(candidate) {
+    const labels = [];
+    if (candidate.dailyDays.length) {
+      labels.push("日常点検データ " + String(candidate.dailyDays.length) + "件");
+    }
+    if (candidate.tireRecords.length) {
+      labels.push("タイヤ点検データ " + String(candidate.tireRecords.length) + "件");
+    }
+    if (candidate.dailyEvents.length) {
+      labels.push("日常点検ポイント " + String(candidate.dailyEvents.length) + "件");
+    }
+    if (candidate.tireEvents.length) {
+      labels.push("タイヤ点検ポイント " + String(candidate.tireEvents.length) + "件");
+    }
+    return labels.length ? labels : ["削除対象なし"];
+  }
+
+  function buildInspectionPointLabels(events, source) {
+    if (!events.length) {
+      return ["なし"];
+    }
+    const buckets = {
+      same: { count: 0, points: 0 },
+      late: { count: 0, points: 0 },
+      unknown: { count: 0, points: 0 }
+    };
+    events.forEach(function (eventRecord) {
+      const data = eventRecord.data || {};
+      const timing = getInspectionPointTiming(data, source);
+      const bucket = buckets[timing] || buckets.unknown;
+      bucket.count += 1;
+      bucket.points += getNumericValue(data.points);
+    });
+    return ["same", "late", "unknown"].filter(function (key) {
+      return buckets[key].count > 0;
+    }).map(function (key) {
+      const label = getInspectionPointTimingLabel(key, source);
+      return label + " " + String(buckets[key].count) + "件 " + formatSignedPoints(buckets[key].points);
+    });
+  }
+
+  function renderMetaSpans(items) {
+    return (items || []).map(function (item) {
+      return "<span>" + escapeHtml(item) + "</span>";
+    }).join("");
+  }
+
+  function describeInspectionPointEvent(eventRecord) {
+    const data = eventRecord.data || {};
+    const source = normalizeText(data.source);
+    const sourceLabel = source === DAILY_SOURCE ? "日常点検ポイント" : "タイヤ点検ポイント";
+    const timing = getInspectionPointTiming(data, source);
+    return sourceLabel + ": " + eventRecord.id + " (" + getInspectionPointTimingLabel(timing, source) + " " + formatSignedPoints(getNumericValue(data.points)) + ")";
+  }
+
+  function getInspectionPointTiming(data, source) {
+    const points = getNumericValue(data && data.points);
+    if (source === DAILY_SOURCE) {
+      const targetDate = getDateKey(data && (data.targetDate || data.inspectionDate));
+      const sentDate = getDateKey(data && data.sentDate);
+      if (targetDate && sentDate) {
+        return targetDate === sentDate ? "same" : "late";
+      }
+      return points >= 2 ? "same" : (points > 0 ? "late" : "unknown");
+    }
+    if (source === TIRE_SOURCE) {
+      const targetMonth = normalizeMonthKey(data && data.targetMonth)
+        || normalizeMonthKey(normalizeText(data && data.inspectionDate).slice(0, 7));
+      const sentMonth = normalizeMonthKey(normalizeText(data && data.sentDate).slice(0, 7));
+      if (targetMonth && sentMonth) {
+        return targetMonth === sentMonth ? "same" : "late";
+      }
+      return points >= 2 ? "same" : (points > 0 ? "late" : "unknown");
+    }
+    return "unknown";
+  }
+
+  function getInspectionPointTimingLabel(timing, source) {
+    if (source === DAILY_SOURCE) {
+      if (timing === "same") {
+        return "当日";
+      }
+      if (timing === "late") {
+        return "後日";
+      }
+      return "日付不明";
+    }
+    if (source === TIRE_SOURCE) {
+      if (timing === "same") {
+        return "当月";
+      }
+      if (timing === "late") {
+        return "翌月以降";
+      }
+      return "月不明";
+    }
+    return "不明";
+  }
+
+  function getDateKey(value) {
+    const match = /^(\d{4}-\d{2}-\d{2})/.exec(normalizeText(value));
+    return match ? match[1] : "";
+  }
+  function getInspectionEventDay(data) {
+    const source = normalizeText(data && data.source);
+    if (source === TIRE_SOURCE) {
+      let tireDay = getTireRecordDay(data);
+      if (!tireDay && state.tireRecords.length === 1) {
+        tireDay = getTireRecordDay(state.tireRecords[0].data);
+      }
+      return tireDay || normalizeDayNumber(getEventDay(data));
+    }
+    return normalizeDayNumber(getEventDay(data));
+  }
+  function ensureDateDeleteCandidate(candidatesByDay, day) {
+    const dayKey = String(day);
+    if (!candidatesByDay.has(dayKey)) {
+      candidatesByDay.set(dayKey, {
+        day: day,
+        dailyDays: [],
+        tireRecords: [],
+        inspectionEvents: [],
+        dailyEvents: [],
+        tireEvents: [],
+        otherEvents: [],
+        pointTotal: 0,
+        details: []
+      });
+    }
+    return candidatesByDay.get(dayKey);
+  }
   function buildAndRenderReview() {
     resetReview();
 
@@ -683,25 +891,31 @@
       return;
     }
 
-    state.review = buildReview();
+    state.review = buildBulkDateReview();
     renderReview();
     syncButtons();
   }
 
-  function buildReview() {
+  function buildBulkDateReview() {
     const vehicle = normalizeText(elements.vehicleSelect.value);
     const driverOption = getSelectedDriverOption();
     const month = normalizeMonthKey(elements.monthSelect.value);
     const schema = state.activeSchema || buildFallbackSchema(pointsSettings.preferredCollection || "driver-points");
     const summaryBefore = state.currentSummary ? getRecordPoints(state.currentSummary, schema) : 0;
     const beforeBreakdown = calculateEventBreakdown(state.allEvents);
-
+    const selectedDayKeys = Array.from(state.selectedDayKeys).map(normalizeDayNumber).filter(Boolean).sort(function (left, right) {
+      return left - right;
+    });
+    const candidatesByDay = new Map(buildDateDeleteCandidates().map(function (candidate) {
+      return [String(candidate.day), candidate];
+    }));
     const review = {
-      targetType: "",
+      targetType: "inspectionDates",
       vehicle: vehicle,
       driverOption: driverOption,
       month: month,
       day: null,
+      days: selectedDayKeys.slice(),
       summaryBefore: summaryBefore,
       summaryAfter: summaryBefore,
       eventTotalBefore: beforeBreakdown.total,
@@ -716,18 +930,49 @@
       deleteDailyDays: [],
       summaryPayload: null,
       deleteSummaryAfter: false,
-      logAction: "",
+      logAction: "deleteInspectionDatesWithRelatedPoints",
+      ignoreIntegrityErrors: true,
       canExecute: false,
-      executeLabel: "削除を実行"
+      executeLabel: "選択日をまとめて削除"
     };
 
-    buildSelectedEventReview(review);
-
-    if (summaryBefore !== beforeBreakdown.total) {
-      review.errors.push(
-        "現在ポイントとイベント合計が一致していません。安全のため削除できません。Firebase の履歴とサマリーを確認してください。"
-      );
+    if (!selectedDayKeys.length) {
+      review.errors.push("削除する日付を1つ以上選択してください。");
     }
+    if (summaryBefore !== beforeBreakdown.total) {
+      review.warnings.push("削除前のポイントサマリーとイベント合計は一致していません。削除後に残イベント合計でサマリーを再計算します。");
+    }
+
+    selectedDayKeys.forEach(function (day) {
+      const candidate = candidatesByDay.get(String(day));
+      if (!candidate) {
+        review.warnings.push(String(day) + "日の削除候補が見つかりません。再読み込みしてください。");
+        return;
+      }
+      review.relatedItems.push(formatMonthLabel(month) + " " + day + "日");
+      candidate.details.forEach(function (detail) {
+        review.relatedItems.push("  " + detail);
+      });
+      if (candidate.otherEvents.length) {
+        review.warnings.push(String(day) + "日に点検以外のポイントイベントが " + String(candidate.otherEvents.length) + "件あります。削除対象外です。");
+      }
+      candidate.dailyDays.forEach(function (entry) {
+        review.deleteDailyDays.push(entry);
+        review.deleteItems.push("日次点検データ: " + entry.record.id + " の " + entry.day + "日分");
+      });
+      candidate.tireRecords.forEach(function (record) {
+        review.deleteTireRecords.push(record);
+        review.deleteItems.push("月次タイヤ点検データ: " + record.id);
+      });
+      candidate.inspectionEvents.forEach(function (eventRecord) {
+        review.deleteEventIds.push(eventRecord.id);
+        review.deleteItems.push(describeInspectionPointEvent(eventRecord));
+      });
+    });
+
+    review.deleteEventIds = uniqueValues(review.deleteEventIds);
+    review.deleteTireRecords = uniqueRecords(review.deleteTireRecords);
+    review.deleteDailyDays = uniqueDailyDayEntries(review.deleteDailyDays);
 
     const remainingEvents = state.allEvents.filter(function (eventRecord) {
       return !review.deleteEventIds.includes(eventRecord.id);
@@ -737,159 +982,10 @@
     review.summaryAfter = afterBreakdown.total;
     review.deleteSummaryAfter = remainingEvents.length === 0;
     review.summaryPayload = buildSummaryPayload(schema, review, afterBreakdown);
-
     review.integrityItems = buildIntegrityMessages(review);
     review.canExecute = review.errors.length === 0
-      && Boolean(review.summaryPayload)
       && (review.deleteEventIds.length > 0 || review.deleteTireRecords.length > 0 || review.deleteDailyDays.length > 0);
-
     return review;
-  }
-
-  function buildSelectedEventReview(review) {
-    const selectedEvent = state.monthEvents.find(function (eventRecord) {
-      return eventRecord.id === state.selectedEventId;
-    });
-    if (!selectedEvent) {
-      review.errors.push("削除したい履歴を一覧から1件選択してください。");
-      return;
-    }
-
-    const source = normalizeText(selectedEvent.data && selectedEvent.data.source);
-    if (source === DAILY_SOURCE) {
-      review.targetType = "dailyInspection";
-      buildDailyReview(review, selectedEvent);
-      return;
-    }
-    if (source === TIRE_SOURCE) {
-      review.targetType = "monthlyTireInspection";
-      buildMonthlyTireReview(review, selectedEvent);
-      return;
-    }
-
-    review.targetType = "pointEvent";
-    buildPointEventReview(review, selectedEvent);
-  }
-
-  function buildDailyReview(review, selectedEvent) {
-    review.logAction = "deleteDailyInspectionWithRelatedPoints";
-    if (!selectedEvent) {
-      review.errors.push("日次点検削除では、対象月のポイントイベント一覧から削除する日付の履歴を1件選択してください。");
-      return;
-    }
-    if (normalizeText(selectedEvent.data && selectedEvent.data.source) !== DAILY_SOURCE) {
-      review.errors.push("日次点検削除では、日次点検のポイントイベントを選択してください。");
-      return;
-    }
-
-    const day = normalizeDayNumber(getEventDay(selectedEvent.data));
-    if (!day) {
-      review.errors.push("選択した日次点検イベントから対象日を判断できません。");
-      return;
-    }
-    review.day = day;
-
-    const dailyRecords = state.dailyRecords.filter(function (record) {
-      return dailyRecordHasDay(record.data, day);
-    });
-    const dailyEvents = state.monthEvents.filter(function (eventRecord) {
-      const data = eventRecord.data || {};
-      return normalizeText(data.source) === DAILY_SOURCE && normalizeDayNumber(getEventDay(data)) === day;
-    });
-
-    review.relatedItems.push("対象日: " + formatMonthLabel(review.month) + " " + day + "日");
-    review.relatedItems.push("日次点検データ: " + dailyRecords.length + "件");
-    review.relatedItems.push("対応ポイントイベント: " + dailyEvents.length + "件");
-
-    if (dailyRecords.length === 0) {
-      review.logAction = "deleteOrphanDailyInspectionPointEvent";
-      review.warnings.push("元の日次点検データが見つからないため、選択したポイントイベントのみ削除します。");
-    } else if (dailyRecords.length > 1) {
-      review.errors.push("対象の日次点検データが複数見つかりました。どれを削除すべきか判断できません。");
-    }
-    if (dailyEvents.length !== 1) {
-      review.errors.push(
-        dailyEvents.length === 0
-          ? "対象の日次点検に対応するポイントイベントが見つかりません。"
-          : "対象の日次点検に対応するポイントイベントが複数あります。どれを削除すべきか判断できません。"
-      );
-    } else if (dailyEvents[0].id !== selectedEvent.id) {
-      review.errors.push("選択された日次点検イベントと、削除候補のイベントが一致しません。");
-    }
-
-    if (dailyRecords.length === 1) {
-      const details = describeDailyDayDetails(dailyRecords[0].data, day);
-      details.forEach(function (detail) {
-        review.relatedItems.push(detail);
-      });
-      review.deleteDailyDays.push({ record: dailyRecords[0], day: day });
-      review.deleteItems.push("日次点検データ: " + dailyRecords[0].id + " の " + day + "日分");
-    }
-    if (dailyEvents.length === 1 && dailyEvents[0].id === selectedEvent.id) {
-      review.deleteEventIds.push(selectedEvent.id);
-      review.deleteItems.push("ポイントイベント: " + selectedEvent.id + " (" + formatSignedPoints(getNumericValue(selectedEvent.data.points)) + ")");
-    }
-  }
-
-  function buildMonthlyTireReview(review, selectedEvent) {
-    review.logAction = "deleteMonthlyTireInspectionWithRelatedPoints";
-    const tireEvents = state.monthEvents.filter(function (eventRecord) {
-      return normalizeText(eventRecord.data && eventRecord.data.source) === TIRE_SOURCE;
-    });
-
-    review.relatedItems.push("対象月: " + formatMonthLabel(review.month));
-    review.relatedItems.push("月次タイヤ点検データ: " + state.tireRecords.length + "件");
-    review.relatedItems.push("対応ポイントイベント: " + tireEvents.length + "件");
-
-    if (state.tireRecords.length === 0) {
-      review.logAction = "deleteOrphanMonthlyTireInspectionPointEvent";
-      review.warnings.push("元の月次タイヤ点検データが見つからないため、選択したポイントイベントのみ削除します。");
-    } else if (state.tireRecords.length > 1) {
-      review.errors.push("対象月の月次タイヤ点検データが複数見つかりました。どれを削除すべきか判断できません。");
-    }
-    if (tireEvents.length !== 1) {
-      review.errors.push(
-        tireEvents.length === 0
-          ? "対象月の月次タイヤ点検に対応するポイントイベントが見つかりません。"
-          : "対象月の月次タイヤ点検に対応するポイントイベントが複数あります。どれを削除すべきか判断できません。"
-      );
-    }
-    if (selectedEvent && tireEvents.length === 1 && tireEvents[0].id !== selectedEvent.id) {
-      review.errors.push("選択された月次タイヤ点検イベントと、削除候補のイベントが一致しません。");
-    }
-
-    if (state.tireRecords.length === 1) {
-      const data = state.tireRecords[0].data || {};
-      review.relatedItems.push("点検日: " + (normalizeText(data.inspectionDate) || "-"));
-      review.deleteTireRecords.push(state.tireRecords[0]);
-      review.deleteItems.push("月次タイヤ点検データ: " + state.tireRecords[0].id);
-    }
-    if (tireEvents.length === 1 && tireEvents[0].id === selectedEvent.id) {
-      review.deleteEventIds.push(tireEvents[0].id);
-      review.deleteItems.push("ポイントイベント: " + tireEvents[0].id + " (" + formatSignedPoints(getNumericValue(tireEvents[0].data.points)) + ")");
-    }
-  }
-
-  function buildPointEventReview(review, selectedEvent) {
-    review.logAction = "deletePointEventOnly";
-    if (!selectedEvent) {
-      review.errors.push("ポイントイベントのみ削除では、履歴一覧から削除するイベントを1件選択してください。");
-      return;
-    }
-
-    const data = selectedEvent.data || {};
-    review.relatedItems.push("選択イベント: " + selectedEvent.id);
-    review.relatedItems.push("種別: " + getEventSourceLabel(data.source));
-    review.relatedItems.push("ポイント: " + formatSignedPoints(getNumericValue(data.points)));
-    review.deleteEventIds.push(selectedEvent.id);
-    review.deleteItems.push("ポイントイベントのみ削除: " + selectedEvent.id);
-
-    if (normalizeText(data.source) === DAILY_SOURCE && sourceDailyDataExists(data)) {
-      review.warnings.push("元の日次点検データが残っている可能性があります。ポイントイベントのみ削除として処理します。");
-    }
-    if (normalizeText(data.source) === TIRE_SOURCE && state.tireRecords.length > 0) {
-      review.warnings.push("元の月次タイヤ点検データが残っている可能性があります。ポイントイベントのみ削除として処理します。");
-    }
   }
 
   function buildIntegrityMessages(review) {
@@ -902,14 +998,17 @@
     });
 
     if (review.errors.length === 0) {
-      messages.push({ type: "ok", text: "整合性: OK" });
+      messages.push({
+        type: "ok",
+        text: review.ignoreIntegrityErrors ? "整合性: 警告のみ（日付削除は実行可）" : "整合性: OK"
+      });
     } else {
       messages.push({ type: "error", text: "整合性: NG" });
     }
 
     if (review.summaryBefore !== review.eventTotalBefore) {
       messages.push({
-        type: "error",
+        type: review.ignoreIntegrityErrors ? "warning" : "error",
         text: "サマリー " + review.summaryBefore + "pt / イベント合計 " + review.eventTotalBefore + "pt"
       });
     } else {
@@ -931,11 +1030,12 @@
     elements.integrityList.innerHTML = review.integrityItems.map(function (item) {
       return '<li class="' + escapeHtml(item.type) + '">' + escapeHtml(item.text) + "</li>";
     }).join("");
-    elements.summaryChangeText.textContent = "ポイントサマリー: "
-      + String(review.summaryBefore) + "pt → " + String(review.summaryAfter) + "pt";
+    elements.summaryChangeText.textContent = review.skipSummaryUpdate && !review.deleteSummaryAfter
+      ? "ポイントサマリー: 変更しません"
+      : "ポイントサマリー: " + String(review.summaryBefore) + "pt → " + String(review.summaryAfter) + "pt";
     elements.executeButton.textContent = review.executeLabel || "削除を実行";
     elements.executeButton.disabled = !review.canExecute || state.executing;
-    setStatus(review.canExecute ? "削除実行前に内容を確認してください。" : "整合性NGまたは実行対象なしのため、実行できません。", !review.canExecute);
+    setStatus(review.canExecute ? "削除実行前に内容を確認してください。" : "削除対象の選択または確認が不足しているため、実行できません。", !review.canExecute);
   }
 
   function renderReviewItems(items, className) {
@@ -954,7 +1054,14 @@
       "この操作は元に戻せません。",
       "対象: " + (review.driverOption ? review.driverOption.label : "-") + " / " + review.vehicle,
       "月: " + formatMonthLabel(review.month),
-      "ポイント: " + review.summaryBefore + "pt → " + review.summaryAfter + "pt",
+      review.skipSummaryUpdate && !review.deleteSummaryAfter
+        ? "ポイントサマリー: 変更しません"
+        : "ポイント: " + review.summaryBefore + "pt → " + review.summaryAfter + "pt",
+      "確認内容:",
+      review.relatedItems.map(function (item) { return "・" + item; }).join("\n") || "・なし",
+      "",
+      "削除予定:",
+      review.deleteItems.map(function (item) { return "・" + item; }).join("\n") || "・なし",
       "",
       "実行してよろしいですか？"
     ].join("\n");
@@ -989,14 +1096,14 @@
       });
       if (review.deleteSummaryAfter) {
         batch.delete(summaryRef);
-      } else {
+      } else if (!review.skipSummaryUpdate) {
         batch.set(summaryRef, review.summaryPayload, { merge: true });
       }
       batch.set(state.pointsDb.collection(LOG_COLLECTION).doc(), buildLogPayload(review, FieldValue));
 
       await batch.commit();
       state.review = null;
-      state.selectedEventId = "";
+      state.selectedDayKeys.clear();
       elements.reviewSection.hidden = true;
       setStatus("データ調整を実行し、ログを保存しました。");
       await loadContext();
@@ -1091,6 +1198,14 @@
       });
     });
 
+    if (review.deleteSummaryAfter && state.currentSummary) {
+      deletedDocs.push({
+        collection: state.activeSchema ? state.activeSchema.collectionName : "driver-points",
+        id: state.currentSummary.id,
+        operation: "deleteDoc"
+      });
+    }
+
     return {
       action: review.logAction,
       target: {
@@ -1099,6 +1214,7 @@
         driverKey: review.driverOption ? review.driverOption.key : "",
         month: review.month,
         day: review.day || null,
+        days: Array.isArray(review.days) ? review.days.slice() : [],
         targetType: review.targetType
       },
       deletedDocs: deletedDocs,
@@ -1120,7 +1236,7 @@
     state.dailyRecords = [];
     state.tireRecords = [];
     state.monthsWithData = new Set();
-    state.selectedEventId = "";
+    state.selectedDayKeys.clear();
   }
 
   function resetReview() {
@@ -1153,6 +1269,60 @@
     }) || null;
   }
 
+  function uniqueValues(values) {
+    return Array.from(new Set((values || []).map(normalizeText).filter(Boolean)));
+  }
+
+  function uniqueRecords(records) {
+    const unique = [];
+    const seen = new Set();
+    (records || []).forEach(function (record) {
+      if (!record || seen.has(record.id)) {
+        return;
+      }
+      seen.add(record.id);
+      unique.push(record);
+    });
+    return unique;
+  }
+
+  function uniqueDailyDayEntries(entries) {
+    const unique = [];
+    const seen = new Set();
+    (entries || []).forEach(function (entry) {
+      if (!entry || !entry.record || !entry.day) {
+        return;
+      }
+      const key = entry.record.id + "|" + String(entry.day);
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      unique.push(entry);
+    });
+    return unique;
+  }
+  function collectDailyRecordDays(records) {
+    const days = new Set();
+    (records || []).forEach(function (record) {
+      const data = record.data || {};
+      collectDayKeys(data.checksByDay).forEach(days.add, days);
+      collectDayKeys(data.maintenanceRecordsByDay).forEach(days.add, days);
+      collectDayKeys(data.maintenanceNotesByDay).forEach(days.add, days);
+      collectDayKeys(data.maintenanceBottomByDay).forEach(days.add, days);
+      (data.holidayDays || data.holidays || []).forEach(function (day) {
+        const normalizedDay = normalizeDayNumber(day);
+        if (normalizedDay) {
+          days.add(normalizedDay);
+        }
+      });
+      collectTruthyDayFlags(data.holidayFlagsByDay).forEach(days.add, days);
+      collectTruthyDayFlags(data.isHolidayByDay).forEach(days.add, days);
+    });
+    return Array.from(days).sort(function (left, right) {
+      return left - right;
+    });
+  }
   function collectDailyDays(records) {
     const days = new Set();
     (records || []).forEach(function (record) {
@@ -1249,13 +1419,11 @@
     return details.length ? details : ["対象日の詳細データ: あり"];
   }
 
-  function sourceDailyDataExists(eventData) {
-    const day = normalizeDayNumber(getEventDay(eventData));
-    return state.dailyRecords.some(function (record) {
-      return dailyRecordHasDay(record.data, day);
-    });
+  function getTireRecordDay(data) {
+    const inspectionDate = normalizeText(data && data.inspectionDate);
+    const match = /^\d{4}-\d{2}-(\d{1,2})/.exec(inspectionDate);
+    return match ? normalizeDayNumber(match[1]) : 0;
   }
-
   function getTireRecordMonth(data) {
     return normalizeMonthKey(data && data.targetMonth)
       || normalizeMonthKey(normalizeText(data && data.inspectionDate).slice(0, 7));
