@@ -21,13 +21,12 @@
     eventPrefix: "driver_points_event"
   });
   const FIREBASE_CONFIG = Object.freeze(getRuntimeFirebaseConfig({
-    apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
-    authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
-    projectId: "sinyuubuturyuu-86aeb",
-    storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
-    messagingSenderId: "213947378677",
-    appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
-    measurementId: "G-F9VYGCTHEV"
+    apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
+    authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
+    projectId: "sinyuubuturyuu-dev",
+    storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
+    messagingSenderId: "997788842966",
+    appId: "1:997788842966:web:e011e7340e2af863c40277"
   }));
 
   const uiState = {
@@ -95,6 +94,29 @@
     const runtime = getFirebaseEmulatorRuntime();
     firestoreModule.connectFirestoreEmulator(db, runtime.firestoreHost, runtime.firestorePort);
     db.__sinyuubuturyuuEmulatorConnected = true;
+  }
+
+  function getFirebaseAppForConfig(appModule, config) {
+    const apps = typeof appModule.getApps === "function" ? appModule.getApps() : [];
+    const expectedProjectId = String(config && config.projectId ? config.projectId : "").trim();
+    const matchedApp = apps.find((app) => {
+      const projectId = app && app.options ? String(app.options.projectId || "").trim() : "";
+      return projectId && projectId === expectedProjectId;
+    });
+
+    if (matchedApp) {
+      return matchedApp;
+    }
+    if (!apps.length) {
+      return appModule.initializeApp(config);
+    }
+
+    const appName = `driver-points-${expectedProjectId || "firebase"}`;
+    try {
+      return appModule.getApp(appName);
+    } catch {
+      return appModule.initializeApp(config, appName);
+    }
   }
 
   function normalizeDriverName(value) {
@@ -444,7 +466,7 @@
     }
 
     runtimeState.promise = (async () => {
-      const [{ getApp, getApps, initializeApp }, authModule, firestoreModule] = await Promise.all([
+      const [appModule, authModule, firestoreModule] = await Promise.all([
         import("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js"),
         import("https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js"),
         import("https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js")
@@ -461,9 +483,7 @@
       }
 
       if (!app) {
-        app = typeof getApps === "function" && getApps().length
-          ? getApp()
-          : initializeApp(FIREBASE_CONFIG);
+        app = getFirebaseAppForConfig(appModule, FIREBASE_CONFIG);
       }
       if (!auth) {
         auth = authModule.getAuth(app);

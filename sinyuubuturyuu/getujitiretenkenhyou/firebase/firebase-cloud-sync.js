@@ -364,11 +364,22 @@
   }
 
   function getOrCreateFirebaseApp(config, appName) {
+    const expectedProjectId = String(config && config.projectId ? config.projectId : "").trim();
     if (!appName) {
+      const matchedApp = state.firebase.apps.find((app) => {
+        const projectId = app && app.options ? String(app.options.projectId || "").trim() : "";
+        return projectId && projectId === expectedProjectId;
+      });
+      if (matchedApp) {
+        return matchedApp;
+      }
       if (!state.firebase.apps.length) {
         return state.firebase.initializeApp(config);
       }
-      return state.firebase.app();
+
+      const fallbackAppName = `monthly-tire-${expectedProjectId || "firebase"}`;
+      const existingFallbackApp = state.firebase.apps.find((app) => app.name === fallbackAppName);
+      return existingFallbackApp || state.firebase.initializeApp(config, fallbackAppName);
     }
 
     const existingApp = state.firebase.apps.find((app) => app.name === appName);
@@ -438,12 +449,10 @@
       }
 
       state.firebase = await ensureFirebaseSdk();
-      if (!state.firebase.apps.length) {
-        state.firebase.initializeApp(config);
-      }
+      const app = getOrCreateFirebaseApp(config, null);
 
-      state.auth = state.firebase.auth();
-      state.db = state.firebase.firestore();
+      state.auth = app.auth();
+      state.db = app.firestore();
       connectCompatAuthEmulatorIfNeeded(state.auth);
       connectCompatFirestoreEmulatorIfNeeded(state.db);
       state.deviceId = getOrCreateDeviceId();

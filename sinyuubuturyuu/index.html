@@ -7,18 +7,20 @@
   <meta name="theme-color" content="#ffffff">
   <meta name="description" content="よく使うアプリをすばやく起動するランチャー">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="シンユウ物流アプリ">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./sinyuubuturyuu-icon.png" type="image/png">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
-  <link rel="stylesheet" href="./launcher.css?v=20260418a">
+  <link rel="stylesheet" href="./launcher.css?v=20260617-dev">
 </head>
 <body>
   <main class="launcher">
     <section class="launcher-card" aria-label="アプリ選択">
       <img class="launcher-logo" src="./sinyuubuturyuu-icon.png" alt="シンユウ物流アプリアイコン">
       <h1>シンユウ物流アプリ</h1>
+      <p id="environmentBadge" class="environment-badge" hidden></p>
 
       <section id="authLoading" class="auth-panel auth-loading" aria-label="認証確認中">
         <p class="auth-copy">ログイン状態を確認しています。</p>
@@ -133,13 +135,13 @@
     <img id="sendFarewellImage" src="./getujitiretenkenhyou/icons/monthly-complete.png" alt="Monthly inspection complete.">
   </div>
 
-  <script src="./shared-settings.js?v=20260405a"></script>
+  <script src="./shared-settings.js?v=20260617-dev"></script>
   <script src="./shared-no-zoom.js"></script>
-  <script src="./driver-points/driver-points.js?v=20260423b"></script>
-  <script src="./getujitiretenkenhyou/firebase/firebase-config.js?v=20260322-1"></script>
-  <script src="./getujitiretenkenhyou/firebase/firebase-cloud-sync.js?v=20260423c"></script>
-  <script src="./auth/firebase-auth.js?v=20260330a"></script>
-  <script src="./launcher.js?v=20260418a"></script>
+  <script src="./getujitiretenkenhyou/firebase/firebase-config.js?v=20260617-dev"></script>
+  <script src="./auth/firebase-auth.js?v=20260617-dev"></script>
+  <script src="./getujitiretenkenhyou/firebase/firebase-cloud-sync.js?v=20260617-dev"></script>
+  <script src="./driver-points/driver-points.js?v=20260617-dev"></script>
+  <script src="./launcher.js?v=20260617-dev"></script>
 </body>
 </html>
 

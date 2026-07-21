@@ -5,13 +5,12 @@
   "use strict";
 
   window.APP_FIREBASE_CONFIG = {
-    apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
-    authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
-    projectId: "sinyuubuturyuu-86aeb",
-    appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
-    messagingSenderId: "213947378677",
-    storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
-    measurementId: "G-F9VYGCTHEV"
+    apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
+    authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
+    projectId: "sinyuubuturyuu-dev",
+    appId: "1:997788842966:web:e011e7340e2af863c40277",
+    messagingSenderId: "997788842966",
+    storageBucket: "sinyuubuturyuu-dev.firebasestorage.app"
   };
   window.APP_FIREBASE_SYNC_OPTIONS = {
     enabled: true,
@@ -30,13 +29,12 @@
   };
 
   window.APP_FIREBASE_DIRECTORY_CONFIG = {
-    apiKey: "AIzaSyCUhbTrb3c5wN3zeJkFHzYvdWtN777hpNk",
-    authDomain: "sinyuubuturyuu-86aeb.firebaseapp.com",
-    projectId: "sinyuubuturyuu-86aeb",
-    storageBucket: "sinyuubuturyuu-86aeb.firebasestorage.app",
-    messagingSenderId: "213947378677",
-    appId: "1:213947378677:web:03b73a0dc7d710a9900ebc",
-    measurementId: "G-F9VYGCTHEV"
+    apiKey: "AIzaSyBBvJndQmecQfaetdjs9Pb6Z1TDmoQMOGc",
+    authDomain: "sinyuubuturyuu-dev.firebaseapp.com",
+    projectId: "sinyuubuturyuu-dev",
+    storageBucket: "sinyuubuturyuu-dev.firebasestorage.app",
+    messagingSenderId: "997788842966",
+    appId: "1:997788842966:web:e011e7340e2af863c40277"
   };
 
   window.APP_FIREBASE_DIRECTORY_SYNC_OPTIONS = {
