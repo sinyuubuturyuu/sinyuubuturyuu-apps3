@@ -1,87 +1,20 @@
 (function () {
   "use strict";
 
-  const STORAGE_KEY = "production.return.checklist.v1";
+  const STORAGE_KEY = "production.return.checklist.v2";
   const sections = [
     {
-      id: "report",
-      title: "Codex の完了報告",
-      description: "作業完了時の返答に、依頼した確認結果が含まれているかを確認します。",
+      id: "required",
+      title: "必須確認",
+      description: "本番設定へ安全に戻すための7項目だけを確認します。",
       items: [
-        {
-          id: "report-files",
-          label: "変更ファイル一覧が報告されている。",
-          note: "復帰対象のどのファイルを書き換えたかを確認します。"
-        },
-        {
-          id: "report-projectid",
-          label: "`projectId` が `sinyuubuturyuu-86aeb` になる確認結果が報告されている。",
-          note: "本番設定へ戻ったことを確認します。"
-        },
-        {
-          id: "report-no-dev",
-          label: "`sinyuubuturyuu-dev` が対象ファイル内に残っていない確認結果が報告されている。",
-          note: "開発環境向けの設定が残っていないことを確認します。"
-        }
-      ]
-    },
-    {
-      id: "manual",
-      title: "手動確認の順番",
-      description: "ここから先は人がパソコン用アプリを開いて確認します。",
-      items: [
-        {
-          id: "manual-login",
-          label: "いったんログアウトして、本番用の通常ユーザーでログインした。",
-          note: "復帰後のログイン状態を確認する最初の手順です。"
-        },
-        {
-          id: "manual-restore",
-          label: "再読み込み後も同じユーザーが表示された。",
-          note: "復元状態も本番環境で正常かを確認します。"
-        },
-        {
-          id: "manual-tire",
-          label: "`月次タイヤ点検表` で通常の入力と保存ができた。",
-          note: "保存内容が通常どおり反映されることまで確認します。"
-        },
-        {
-          id: "manual-daily",
-          label: "`月次日常点検表` で通常の入力と保存ができた。",
-          note: "保存内容が通常どおり反映されることまで確認します。"
-        },
-        {
-          id: "manual-points",
-          label: "`ポイント管理` で通常の操作と保存ができた。",
-          note: "確認用の操作結果が通常どおり反映されることを確認します。"
-        },
-        {
-          id: "manual-directory",
-          label: "`社員名簿` が正しく表示された。",
-          note: "本番で使う社員データが通常どおり見えることを確認します。"
-        },
-        {
-          id: "manual-dev-safe",
-          label: "開発環境 `sinyuubuturyuu-dev` に影響が出ていない。",
-          note: "本番へ戻した操作が開発環境へ波及していないことを確認します。"
-        }
-      ]
-    },
-    {
-      id: "merge",
-      title: "マージ前の最終確認",
-      description: "全部終わってから main へマージします。",
-      items: [
-        {
-          id: "merge-ready",
-          label: "上の確認がすべて終わっている。",
-          note: "確認が終わる前にマージしません。"
-        },
-        {
-          id: "merge-main",
-          label: "この同じ作業ブランチを `main` へマージする準備ができている。",
-          note: "新しいブランチは作らず、このブランチのまま進めます。"
-        }
+        { id: "required-restore", label: "開発環境用の差分を正確に取り除いている", note: "本番値を手入力で再作成せず、記録した環境差分または最新mainを基準に戻す。" },
+        { id: "required-config", label: "実行コードのFirebase設定一式が確認済みの本番用設定である", note: "projectIdだけでなく関連する設定値を確認する。" },
+        { id: "required-no-dev", label: "開発用の接続設定・表示・キャッシュ名が残っていない", note: "docs内の説明用IDとは分けて確認する。" },
+        { id: "required-cache", label: "Service Workerとキャッシュの更新経路が本番用である", note: "古い開発設定が再配信されない。" },
+        { id: "required-checks", label: "構文確認とgit diff --checkが成功している", note: "変更ファイル一覧と理由も確認する。" },
+        { id: "required-diff", label: "最終差分に意図した機能変更だけが残っている", note: "環境切替だけのブランチをmainへマージしない。" },
+        { id: "required-approval", label: "commit・push・PR・マージ・デプロイは別途承認後に行う", note: "Firebaseデータ変更も明示的な許可なしでは行わない。" }
       ]
     }
   ];
@@ -225,7 +158,7 @@
     }
 
     if (doneCount === totalItems) {
-      elements.overallProgressCaption.textContent = "確認完了です。このブランチを main へマージできます。";
+      elements.overallProgressCaption.textContent = "確認完了です。マージ・デプロイは別途承認後に行ってください。";
       return;
     }
 
