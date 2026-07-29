@@ -28,6 +28,82 @@
   grid-template-columns: minmax(240px, 0.72fr) minmax(420px, 1.28fr);
 }
 
+.point-grant-grid {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.45fr) minmax(280px, 1.15fr) auto;
+  align-items: end;
+  gap: 14px;
+}
+
+.point-grant-reason-field {
+  min-width: 0;
+}
+
+.point-grant-action {
+  display: flex;
+  align-items: end;
+}
+
+.point-grant-action .mini-button {
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.point-grant-review {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(12, 93, 125, 0.24);
+  border-radius: 18px;
+  background: rgba(12, 93, 125, 0.07);
+}
+
+.point-grant-review[hidden] {
+  display: none;
+}
+
+.point-grant-review h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.point-grant-review-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.point-grant-review-details {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 16px;
+}
+
+.point-grant-review-details dt {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.point-grant-review-details dd {
+  margin: 0;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.point-grant-quota-note {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(181, 106, 0, 0.32);
+  border-radius: 14px;
+  background: rgba(255, 244, 214, 0.9);
+  color: #6f4300;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.75;
+}
+
 .month-overview {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -224,8 +300,20 @@ a.mini-button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .point-grant-grid {
+    grid-template-columns: minmax(140px, 0.45fr) minmax(240px, 1fr);
+  }
+
+  .point-grant-action {
+    grid-column: 1 / -1;
+  }
+
   .adjustment-summary,
   .review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .point-grant-review-body {
     grid-template-columns: 1fr;
   }
 
@@ -240,8 +328,18 @@ a.mini-button {
   }
 
   .adjustment-grid,
+  .point-grant-grid,
   .month-overview {
     grid-template-columns: 1fr;
+  }
+
+  .point-grant-review-details {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .point-grant-review-details dd + dt {
+    margin-top: 8px;
   }
 
   .danger-zone {

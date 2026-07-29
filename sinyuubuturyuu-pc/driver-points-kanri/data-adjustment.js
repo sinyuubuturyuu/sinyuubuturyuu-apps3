@@ -14,6 +14,8 @@
   const EVENT_KIND = "driver_points_event";
   const DAILY_SOURCE = "dailyInspection";
   const TIRE_SOURCE = "monthlyTireInspection";
+  const MANUAL_SOURCE = "manualAdjustment";
+  const MANUAL_EVENT_PREFIX = "driver_points_event_manual_";
 
   const optionsDocRefs = Object.freeze({
     vehicles: {
@@ -30,6 +32,13 @@
     driverSelect: document.getElementById("driverSelect"),
     vehicleSelect: document.getElementById("vehicleSelect"),
     monthSelect: document.getElementById("monthSelect"),
+    pointGrantPoints: document.getElementById("pointGrantPoints"),
+    pointGrantReason: document.getElementById("pointGrantReason"),
+    pointGrantReviewButton: document.getElementById("pointGrantReviewButton"),
+    pointGrantReview: document.getElementById("pointGrantReview"),
+    pointGrantReviewDetails: document.getElementById("pointGrantReviewDetails"),
+    pointGrantExecuteButton: document.getElementById("pointGrantExecuteButton"),
+    pointGrantCancelButton: document.getElementById("pointGrantCancelButton"),
     reviewButton: document.getElementById("reviewButton"),
     executeButton: document.getElementById("executeButton"),
     currentPointsValue: document.getElementById("currentPointsValue"),
@@ -51,6 +60,7 @@
     optionSourceReady: false,
     loading: false,
     executing: false,
+    granting: false,
     loadToken: 0,
     referenceDb: null,
     pointsDb: null,
@@ -64,6 +74,8 @@
     tireRecords: [],
     monthsWithData: new Set(),
     selectedDayKeys: new Set(),
+    selectedManualEventIds: new Set(),
+    pointGrantReview: null,
     review: null
   };
 
@@ -74,6 +86,13 @@
     elements.driverSelect.addEventListener("change", handleSelectionChanged);
     elements.vehicleSelect.addEventListener("change", handleSelectionChanged);
     elements.monthSelect.addEventListener("change", handleSelectionChanged);
+    elements.pointGrantPoints.addEventListener("input", resetPointGrantReview);
+    elements.pointGrantReason.addEventListener("input", resetPointGrantReview);
+    elements.pointGrantReviewButton.addEventListener("click", buildAndRenderPointGrantReview);
+    elements.pointGrantExecuteButton.addEventListener("click", function () {
+      void executePointGrant();
+    });
+    elements.pointGrantCancelButton.addEventListener("click", resetPointGrantReview);
     elements.reviewButton.addEventListener("click", function () {
       buildAndRenderReview();
     });
@@ -82,17 +101,27 @@
     });
     elements.eventHistoryBody.addEventListener("change", function (event) {
       const target = event.target;
-      if (!target || target.name !== "dayChoice") {
+      if (!target) {
         return;
       }
-      const dayKey = normalizeText(target.value);
-      if (!dayKey) {
+      const value = normalizeText(target.value);
+      if (!value) {
         return;
       }
-      if (target.checked) {
-        state.selectedDayKeys.add(dayKey);
+      if (target.name === "dayChoice") {
+        if (target.checked) {
+          state.selectedDayKeys.add(value);
+        } else {
+          state.selectedDayKeys.delete(value);
+        }
+      } else if (target.name === "manualChoice") {
+        if (target.checked) {
+          state.selectedManualEventIds.add(value);
+        } else {
+          state.selectedManualEventIds.delete(value);
+        }
       } else {
-        state.selectedDayKeys.delete(dayKey);
+        return;
       }
       resetReview();
       syncButtons();
@@ -291,6 +320,8 @@
 
   function handleSelectionChanged() {
     state.selectedDayKeys.clear();
+    state.selectedManualEventIds.clear();
+    resetPointGrantReview();
     resetReview();
     syncButtons();
 
@@ -302,6 +333,225 @@
     }
 
     void loadContext();
+  }
+
+  function buildAndRenderPointGrantReview() {
+    if (!hasBaseSelection()) {
+      setStatus("乗務員、車番、対象月を選択してください。", true);
+      return;
+    }
+    if (state.loading || state.executing || state.granting) {
+      setStatus("処理中です。完了してからもう一度お試しください。", true);
+      return;
+    }
+
+    const points = Number(elements.pointGrantPoints.value);
+    const reason = normalizeText(elements.pointGrantReason.value);
+    if (!Number.isSafeInteger(points) || points < 1) {
+      setStatus("加算ポイントは1以上の整数で入力してください。", true);
+      return;
+    }
+    if (!reason) {
+      setStatus("加算理由を入力してください。", true);
+      return;
+    }
+    if (reason.length > 200) {
+      setStatus("加算理由は200文字以内で入力してください。", true);
+      return;
+    }
+
+    const schema = state.activeSchema || buildFallbackSchema(pointsSettings.preferredCollection || "driver-points");
+    const eventBreakdown = calculateEventBreakdown(state.allEvents);
+    const summaryBefore = state.currentSummary
+      ? getRecordPoints(state.currentSummary, schema)
+      : eventBreakdown.total;
+    const driverOption = getSelectedDriverOption();
+    const adjustmentDate = buildLocalDateKey(new Date());
+    const operationId = buildManualAdjustmentOperationId();
+    state.pointGrantReview = {
+      operationId: operationId,
+      eventId: MANUAL_EVENT_PREFIX + operationId,
+      driverOption: driverOption,
+      vehicle: normalizeText(elements.vehicleSelect.value),
+      month: normalizeMonthKey(elements.monthSelect.value),
+      points: points,
+      reason: reason,
+      adjustmentDate: adjustmentDate,
+      summaryBefore: summaryBefore,
+      summaryAfter: summaryBefore + points,
+      manualBefore: eventBreakdown.manual,
+      operatorUid: getCurrentOperatorUid()
+    };
+
+    elements.pointGrantReviewDetails.innerHTML = [
+      renderPointGrantReviewRow("対象社員", driverOption ? driverOption.label : "-"),
+      renderPointGrantReviewRow("車番", state.pointGrantReview.vehicle),
+      renderPointGrantReviewRow("対象月", formatMonthLabel(state.pointGrantReview.month)),
+      renderPointGrantReviewRow("登録日", adjustmentDate),
+      renderPointGrantReviewRow("現在ポイント", String(summaryBefore) + "pt"),
+      renderPointGrantReviewRow("加算ポイント", formatSignedPoints(points)),
+      renderPointGrantReviewRow("加算後ポイント", String(summaryBefore + points) + "pt"),
+      renderPointGrantReviewRow("理由", reason)
+    ].join("");
+    elements.pointGrantReview.hidden = false;
+    setStatus("ポイント加算前の内容を確認してください。");
+    syncButtons();
+  }
+
+  function renderPointGrantReviewRow(label, value) {
+    return "<dt>" + escapeHtml(label) + "</dt><dd>" + escapeHtml(value) + "</dd>";
+  }
+
+  async function executePointGrant() {
+    const review = state.pointGrantReview;
+    if (!review || state.granting || state.executing || state.loading || !state.pointsDb) {
+      return;
+    }
+
+    state.granting = true;
+    syncButtons();
+    setStatus("ポイントを加算しています...");
+
+    try {
+      const schema = state.activeSchema || buildFallbackSchema(pointsSettings.preferredCollection || "driver-points");
+      const collectionRef = state.pointsDb.collection(schema.collectionName);
+      const identity = buildSelectionIdentity(review.driverOption ? review.driverOption.label : "", review.vehicle);
+      const summaryRef = state.currentSummary && state.currentSummary.ref
+        ? state.currentSummary.ref
+        : collectionRef.doc(buildSummaryDocId(identity));
+      const eventRef = collectionRef.doc(review.eventId);
+      const logRef = state.pointsDb.collection(LOG_COLLECTION).doc();
+      const FieldValue = window.firebase.firestore.FieldValue;
+
+      await state.pointsDb.runTransaction(async function (transaction) {
+        const eventSnapshot = await transaction.get(eventRef);
+        if (eventSnapshot.exists) {
+          throw new Error("manual_adjustment_already_exists");
+        }
+
+        const summarySnapshot = await transaction.get(summaryRef);
+        const summaryData = summarySnapshot.exists ? (summarySnapshot.data() || {}) : {};
+        const pointsFieldName = resolvePointsFieldName(summaryData, schema);
+        const currentPoints = summarySnapshot.exists
+          ? getNumericValue(summaryData[pointsFieldName])
+          : review.summaryBefore;
+        if (currentPoints !== review.summaryBefore) {
+          throw new Error("point_summary_changed");
+        }
+
+        const currentManualPoints = review.manualBefore;
+        const summaryPayload = {
+          kind: normalizeText(pointsSettings.summaryKindValue) || SUMMARY_KIND,
+          driverKey: identity.driverKey,
+          driverName: identity.driverName,
+          driverRaw: review.driverOption ? review.driverOption.value : identity.driverName,
+          vehicleKey: identity.vehicleKey,
+          vehicleNumber: identity.vehicleNumber,
+          totalPoints: currentPoints + review.points,
+          manualAdjustmentPoints: currentManualPoints + review.points,
+          updatedAt: FieldValue.serverTimestamp(),
+          lastAwardAt: FieldValue.serverTimestamp(),
+          lastSource: MANUAL_SOURCE
+        };
+        summaryPayload[schema.vehicleField || "vehicleNumber"] = schema.vehicleField === "vehicleKey"
+          ? identity.vehicleKey
+          : identity.vehicleNumber;
+        summaryPayload[schema.driverField || "driverKey"] = schema.driverField === "driverKey"
+          ? identity.driverKey
+          : identity.driverName;
+        summaryPayload[pointsFieldName] = currentPoints + review.points;
+        if (!summarySnapshot.exists) {
+          summaryPayload.createdAt = FieldValue.serverTimestamp();
+        }
+
+        transaction.set(summaryRef, summaryPayload, { merge: true });
+        transaction.set(eventRef, {
+          kind: EVENT_KIND,
+          driverKey: identity.driverKey,
+          driverName: identity.driverName,
+          driverRaw: review.driverOption ? review.driverOption.value : identity.driverName,
+          vehicleKey: identity.vehicleKey,
+          vehicleNumber: identity.vehicleNumber,
+          source: MANUAL_SOURCE,
+          adjustmentType: "pointGrant",
+          operationId: review.operationId,
+          points: review.points,
+          month: review.month,
+          adjustmentDate: review.adjustmentDate,
+          reason: review.reason,
+          operatorUid: review.operatorUid,
+          createdAt: FieldValue.serverTimestamp()
+        });
+        transaction.set(logRef, {
+          action: "addManualPoints",
+          target: {
+            vehicleNumber: identity.vehicleNumber,
+            driverName: identity.driverName,
+            driverKey: identity.driverKey,
+            month: review.month,
+            targetType: "manualPointGrant"
+          },
+          operationId: review.operationId,
+          eventDoc: {
+            collection: schema.collectionName,
+            id: review.eventId,
+            operation: "createDoc"
+          },
+          pointsAdded: review.points,
+          reason: review.reason,
+          summaryBefore: currentPoints,
+          summaryAfter: currentPoints + review.points,
+          operatorUid: review.operatorUid,
+          createdAt: FieldValue.serverTimestamp(),
+          createdBy: review.operatorUid || "管理画面"
+        });
+      });
+
+      elements.pointGrantPoints.value = "";
+      elements.pointGrantReason.value = "";
+      resetPointGrantReview();
+      state.selectedManualEventIds.clear();
+      setStatus(String(review.points) + "ポイントを加算し、記録を保存しました。");
+      await loadContext();
+    } catch (error) {
+      console.warn("Failed to add manual points:", error);
+      if (normalizeText(error && error.message) === "point_summary_changed") {
+        setStatus("確認後にポイントが変更されました。最新データを読み込み直してから、もう一度確認してください。", true);
+        await loadContext();
+        resetPointGrantReview();
+      } else if (normalizeText(error && error.message) === "manual_adjustment_already_exists") {
+        setStatus("このポイント加算はすでに登録されています。再読み込みして確認してください。", true);
+        await loadContext();
+        resetPointGrantReview();
+      } else {
+        setStatus("ポイント加算に失敗しました: " + formatError(error), true);
+      }
+    } finally {
+      state.granting = false;
+      syncButtons();
+    }
+  }
+
+  function buildManualAdjustmentOperationId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID().replaceAll("-", "");
+    }
+    return [
+      Date.now().toString(36),
+      Math.random().toString(36).slice(2),
+      Math.random().toString(36).slice(2)
+    ].join("_");
+  }
+
+  function getCurrentOperatorUid() {
+    try {
+      const user = state.pointsDb && state.pointsDb.app
+        ? state.pointsDb.app.auth().currentUser
+        : null;
+      return normalizeText(user && user.uid);
+    } catch {
+      return "";
+    }
   }
 
   async function loadContext() {
@@ -319,11 +569,20 @@
 
     try {
       const schema = await resolveSchema(false);
-      const summary = await findPointSummaryRecord(schema, vehicle, driverOption);
-      const allEvents = await loadPointEvents(schema, vehicle, driverOption);
-      const dailyRecords = await loadDailyRecords(vehicle, driverOption, month);
-      const tireRecords = await loadTireRecords(vehicle, driverOption, month);
-      const monthsWithData = await loadMonthsWithData(vehicle, driverOption, allEvents, dailyRecords, tireRecords);
+      const [pointRecords, allDailyRecords, allTireRecords] = await Promise.all([
+        loadPointRecords(schema, vehicle, driverOption),
+        loadDailyRecords(vehicle, driverOption),
+        loadTireRecords(vehicle, driverOption)
+      ]);
+      const summary = await findPointSummaryRecord(schema, vehicle, driverOption, pointRecords);
+      const allEvents = pointRecords.filter(isEventRecord);
+      const dailyRecords = allDailyRecords.filter(function (record) {
+        return normalizeMonthKey(record.data && record.data.month) === month;
+      });
+      const tireRecords = allTireRecords.filter(function (record) {
+        return getTireRecordMonth(record.data) === month;
+      });
+      const monthsWithData = loadMonthsWithData(allEvents, allDailyRecords, allTireRecords);
 
       if (token !== state.loadToken) {
         return;
@@ -400,7 +659,14 @@
 
   async function inspectCollection(collectionName) {
     try {
-      const snapshot = await getServerQuerySnapshot(state.pointsDb.collection(collectionName).limit(100));
+      const collectionRef = state.pointsDb.collection(collectionName);
+      const summaryKindValue = normalizeText(pointsSettings.summaryKindValue) || SUMMARY_KIND;
+      let snapshot = await getServerQuerySnapshot(
+        collectionRef.where("kind", "==", summaryKindValue).limit(1)
+      );
+      if (snapshot.empty) {
+        snapshot = await getServerQuerySnapshot(collectionRef.limit(20));
+      }
       if (snapshot.empty) {
         return buildFallbackSchema(collectionName);
       }
@@ -459,78 +725,64 @@
     };
   }
 
-  async function findPointSummaryRecord(schema, vehicle, driverOption) {
+  async function findPointSummaryRecord(schema, vehicle, driverOption, pointRecords) {
+    const candidates = (pointRecords || []).filter(function (record) {
+      return isSummaryRecord(record) && recordMatchesSelection(record, schema, vehicle, driverOption);
+    });
+    const summary = pickLatestRecord(candidates, schema);
+    if (summary) {
+      return summary;
+    }
+
     const collectionRef = state.pointsDb.collection(schema.collectionName);
     const identity = buildSelectionIdentity(driverOption.label, vehicle);
     const directDoc = await getServerDocumentSnapshot(collectionRef.doc(buildSummaryDocId(identity)));
-    if (directDoc.exists) {
-      const record = { id: directDoc.id, ref: directDoc.ref, data: directDoc.data() || {} };
-      if (recordMatchesSelection(record, schema, vehicle, driverOption)) {
-        return record;
-      }
+    if (!directDoc.exists) {
+      return null;
     }
-
-    const summaryKindValue = normalizeText(pointsSettings.summaryKindValue) || SUMMARY_KIND;
-    try {
-      const snapshot = await getServerQuerySnapshot(collectionRef.where("kind", "==", summaryKindValue).limit(600));
-      const candidates = snapshot.docs.map(toRecord).filter(function (record) {
-        return isSummaryRecord(record) && recordMatchesSelection(record, schema, vehicle, driverOption);
-      });
-      return pickLatestRecord(candidates, schema);
-    } catch (error) {
-      console.warn("Summary query failed:", error);
-    }
-
-    const fallbackSnapshot = await getServerQuerySnapshot(collectionRef.limit(600));
-    const candidates = fallbackSnapshot.docs.map(toRecord).filter(function (record) {
-      return isSummaryRecord(record) && recordMatchesSelection(record, schema, vehicle, driverOption);
-    });
-    return pickLatestRecord(candidates, schema);
+    const record = toRecord(directDoc);
+    return recordMatchesSelection(record, schema, vehicle, driverOption) ? record : null;
   }
 
-  async function loadPointEvents(schema, vehicle, driverOption) {
+  async function loadPointRecords(schema, vehicle, driverOption) {
     const collectionRef = state.pointsDb.collection(schema.collectionName);
-    let docs = [];
-    try {
-      const snapshot = await getServerQuerySnapshot(collectionRef.where("kind", "==", EVENT_KIND).limit(1000));
-      docs = snapshot.docs;
-    } catch (error) {
-      console.warn("Point event query failed, falling back to collection scan:", error);
-      const snapshot = await getServerQuerySnapshot(collectionRef.limit(1000));
-      docs = snapshot.docs;
+    const identity = buildSelectionIdentity(driverOption.label, vehicle);
+    let snapshot = await getServerQuerySnapshot(
+      collectionRef.where("driverKey", "==", identity.driverKey).limit(1000)
+    );
+    if (snapshot.empty && identity.driverName) {
+      snapshot = await getServerQuerySnapshot(
+        collectionRef.where("driverName", "==", identity.driverName).limit(1000)
+      );
     }
-
-    return docs.map(toRecord).filter(function (record) {
-      return isEventRecord(record) && recordMatchesSelection(record, schema, vehicle, driverOption);
-    });
-  }
-
-  async function loadDailyRecords(vehicle, driverOption, month) {
-    let docs = [];
-    try {
-      const snapshot = await getServerQuerySnapshot(state.pointsDb.collection(DAILY_COLLECTION).where("month", "==", month).limit(300));
-      docs = snapshot.docs;
-    } catch (error) {
-      console.warn("Daily inspection month query failed:", error);
-      const snapshot = await getServerQuerySnapshot(state.pointsDb.collection(DAILY_COLLECTION).limit(500));
-      docs = snapshot.docs;
-    }
-
-    return docs.map(toRecord).filter(function (record) {
-      return normalizeMonthKey(record.data.month) === month
-        && dailyRecordMatchesSelection(record.data, vehicle, driverOption);
-    });
-  }
-
-  async function loadTireRecords(vehicle, driverOption, month) {
-    const snapshot = await getServerQuerySnapshot(state.pointsDb.collection(TIRE_COLLECTION).limit(700));
     return snapshot.docs.map(toRecord).filter(function (record) {
-      return getTireRecordMonth(record.data) === month
-        && tireRecordMatchesSelection(record.data, vehicle, driverOption);
+      return recordMatchesSelection(record, schema, vehicle, driverOption);
     });
   }
 
-  async function loadMonthsWithData(vehicle, driverOption, events, dailyRecords, tireRecords) {
+  async function loadDailyRecords(vehicle, driverOption) {
+    const collectionRef = state.pointsDb.collection(DAILY_COLLECTION);
+    const snapshots = await Promise.all([
+      getServerQuerySnapshot(collectionRef.where("vehicleNormalized", "==", normalizeVehicleKey(vehicle)).limit(300)),
+      getServerQuerySnapshot(collectionRef.where("vehicle", "==", vehicle).limit(300))
+    ]);
+    return mergeSnapshotDocuments(snapshots).map(toRecord).filter(function (record) {
+      return dailyRecordMatchesSelection(record.data, vehicle, driverOption);
+    });
+  }
+
+  async function loadTireRecords(vehicle, driverOption) {
+    const collectionRef = state.pointsDb.collection(TIRE_COLLECTION);
+    const snapshots = await Promise.all([
+      getServerQuerySnapshot(collectionRef.where("basicInfo.vehicleNumber", "==", vehicle).limit(300)),
+      getServerQuerySnapshot(collectionRef.where("vehicleNumber", "==", vehicle).limit(300))
+    ]);
+    return mergeSnapshotDocuments(snapshots).map(toRecord).filter(function (record) {
+      return tireRecordMatchesSelection(record.data, vehicle, driverOption);
+    });
+  }
+
+  function loadMonthsWithData(events, dailyRecords, tireRecords) {
     const months = new Set();
 
     (events || []).forEach(function (eventRecord) {
@@ -554,40 +806,17 @@
       }
     });
 
-    await Promise.all([
-      addDailyDataMonths(months, vehicle, driverOption),
-      addTireDataMonths(months, vehicle, driverOption)
-    ]);
-
     return months;
   }
 
-  async function addDailyDataMonths(months, vehicle, driverOption) {
-    try {
-      const snapshot = await getServerQuerySnapshot(state.pointsDb.collection(DAILY_COLLECTION).limit(1000));
-      snapshot.docs.map(toRecord).forEach(function (record) {
-        const month = normalizeMonthKey(record.data && record.data.month);
-        if (month && dailyRecordMatchesSelection(record.data, vehicle, driverOption) && dailyRecordHasAnyContent(record.data)) {
-          months.add(month);
-        }
+  function mergeSnapshotDocuments(snapshots) {
+    const docsById = new Map();
+    (snapshots || []).forEach(function (snapshot) {
+      (snapshot.docs || []).forEach(function (docSnapshot) {
+        docsById.set(docSnapshot.id, docSnapshot);
       });
-    } catch (error) {
-      console.warn("Failed to collect daily inspection data months:", error);
-    }
-  }
-
-  async function addTireDataMonths(months, vehicle, driverOption) {
-    try {
-      const snapshot = await getServerQuerySnapshot(state.pointsDb.collection(TIRE_COLLECTION).limit(1000));
-      snapshot.docs.map(toRecord).forEach(function (record) {
-        const month = getTireRecordMonth(record.data);
-        if (month && tireRecordMatchesSelection(record.data, vehicle, driverOption)) {
-          months.add(month);
-        }
-      });
-    } catch (error) {
-      console.warn("Failed to collect monthly tire data months:", error);
-    }
+    });
+    return Array.from(docsById.values());
   }
 
   function toRecord(docSnapshot) {
@@ -613,8 +842,10 @@
   }
 
   function tireRecordMatchesSelection(data, vehicle, driverOption) {
-    return dataVehicleMatches(data, vehicle, ["vehicleNumber", "vehicle", "vehicleKey", "vehicleNo"])
-      && dataDriverMatches(data, driverOption, ["driverName", "driver", "driverKey", "driverRaw", "driverDisplay"]);
+    const current = getTireCurrentData(data);
+    const searchableData = Object.assign({}, data || {}, data && data.basicInfo ? data.basicInfo : {}, current);
+    return dataVehicleMatches(searchableData, vehicle, ["vehicleNumber", "vehicle", "vehicleKey", "vehicleNo"])
+      && dataDriverMatches(searchableData, driverOption, ["driverName", "driver", "driverKey", "driverRaw", "driverDisplay"]);
   }
 
   function dataVehicleMatches(data, vehicle, fieldNames) {
@@ -656,13 +887,14 @@
       return;
     }
 
-    const candidates = buildDateDeleteCandidates();
-    if (!candidates.length) {
-      elements.eventHistoryBody.innerHTML = '<tr><td colspan="7">対象月の削除候補日はありません。</td></tr>';
+    const dateCandidates = buildDateDeleteCandidates();
+    const manualEvents = getManualAdjustmentEventsForMonth();
+    if (!dateCandidates.length && !manualEvents.length) {
+      elements.eventHistoryBody.innerHTML = '<tr><td colspan="7">対象月の削除候補はありません。</td></tr>';
       return;
     }
 
-    elements.eventHistoryBody.innerHTML = candidates.map(function (candidate) {
+    const dateRows = dateCandidates.map(function (candidate) {
       const dayKey = String(candidate.day);
       const checked = state.selectedDayKeys.has(dayKey) ? " checked" : "";
       const targetLabels = buildCandidateTargetLabels(candidate);
@@ -686,7 +918,58 @@
           + "</div></td>",
         "</tr>"
       ].join("");
-    }).join("");
+    });
+
+    const manualRows = manualEvents.map(function (eventRecord) {
+      const data = eventRecord.data || {};
+      const checked = state.selectedManualEventIds.has(eventRecord.id) ? " checked" : "";
+      const reason = normalizeText(data.reason) || "理由未登録";
+      const operatorUid = normalizeText(data.operatorUid);
+      return [
+        '<tr class="manual-adjustment-row">',
+        '<td><input type="checkbox" name="manualChoice" value="' + escapeHtml(eventRecord.id) + '"' + checked + "></td>",
+        "<td>" + escapeHtml(formatManualAdjustmentDate(data)) + "</td>",
+        '<td><span class="event-source">手動加算</span></td>',
+        '<td><div class="event-meta"><span>なし</span></div></td>',
+        '<td><div class="event-meta"><span>なし</span></div></td>',
+        '<td><div class="event-meta"><strong>' + escapeHtml(formatSignedPoints(data.points)) + '</strong><span>手動加算</span></div></td>',
+        '<td><div class="event-meta"><span>理由: ' + escapeHtml(reason) + '</span>'
+          + (operatorUid ? '<span>操作者UID: ' + escapeHtml(operatorUid) + '</span>' : "")
+          + '<span>記録ID: ' + escapeHtml(eventRecord.id) + '</span>'
+          + '<span>点検記録は削除されません</span></div></td>',
+        "</tr>"
+      ].join("");
+    });
+
+    elements.eventHistoryBody.innerHTML = dateRows.concat(manualRows).join("");
+  }
+
+  function getManualAdjustmentEventsForMonth() {
+    return state.monthEvents.filter(function (eventRecord) {
+      return normalizeText(eventRecord.data && eventRecord.data.source) === MANUAL_SOURCE;
+    }).slice().sort(function (left, right) {
+      return getRecordCreatedAtTime(right.data) - getRecordCreatedAtTime(left.data);
+    });
+  }
+
+  function formatManualAdjustmentDate(data) {
+    const time = getRecordCreatedAtTime(data);
+    if (time) {
+      return new Intl.DateTimeFormat("ja-JP", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+      }).format(new Date(time));
+    }
+    return normalizeText(data && data.adjustmentDate) || "-";
+  }
+
+  function getRecordCreatedAtTime(data) {
+    return getTimeValue(data && data.createdAt)
+      || getTimeValue(data && data.updatedAt)
+      || getTimeValue(data && data.adjustmentDate);
   }
 
   function buildDateDeleteCandidates() {
@@ -906,11 +1189,12 @@
     const selectedDayKeys = Array.from(state.selectedDayKeys).map(normalizeDayNumber).filter(Boolean).sort(function (left, right) {
       return left - right;
     });
+    const selectedManualEventIds = uniqueValues(Array.from(state.selectedManualEventIds));
     const candidatesByDay = new Map(buildDateDeleteCandidates().map(function (candidate) {
       return [String(candidate.day), candidate];
     }));
     const review = {
-      targetType: "inspectionDates",
+      targetType: selectedManualEventIds.length ? "manualPoints" : "inspectionDates",
       vehicle: vehicle,
       driverOption: driverOption,
       month: month,
@@ -918,6 +1202,8 @@
       days: selectedDayKeys.slice(),
       summaryBefore: summaryBefore,
       summaryAfter: summaryBefore,
+      manualBefore: beforeBreakdown.manual,
+      manualDeletePoints: 0,
       eventTotalBefore: beforeBreakdown.total,
       eventTotalAfter: beforeBreakdown.total,
       relatedItems: [],
@@ -933,11 +1219,14 @@
       logAction: "deleteInspectionDatesWithRelatedPoints",
       ignoreIntegrityErrors: true,
       canExecute: false,
-      executeLabel: "選択日をまとめて削除"
+      executeLabel: "選択したデータを削除"
     };
 
-    if (!selectedDayKeys.length) {
-      review.errors.push("削除する日付を1つ以上選択してください。");
+    if (!selectedDayKeys.length && !selectedManualEventIds.length) {
+      review.errors.push("削除する点検日または手動加算を1件以上選択してください。");
+    }
+    if (selectedDayKeys.length && selectedManualEventIds.length) {
+      review.errors.push("点検日と手動加算は同時に削除できません。どちらか一方だけを選択してください。");
     }
     if (summaryBefore !== beforeBreakdown.total) {
       review.warnings.push("削除前のポイントサマリーとイベント合計は一致していません。削除後に残イベント合計でサマリーを再計算します。");
@@ -953,8 +1242,11 @@
       candidate.details.forEach(function (detail) {
         review.relatedItems.push("  " + detail);
       });
-      if (candidate.otherEvents.length) {
-        review.warnings.push(String(day) + "日に点検以外のポイントイベントが " + String(candidate.otherEvents.length) + "件あります。削除対象外です。");
+      const excludedOtherEvents = candidate.otherEvents.filter(function (eventRecord) {
+        return !selectedManualEventIds.includes(eventRecord.id);
+      });
+      if (excludedOtherEvents.length) {
+        review.warnings.push(String(day) + "日に点検以外のポイントイベントが " + String(excludedOtherEvents.length) + "件あります。削除対象外です。");
       }
       candidate.dailyDays.forEach(function (entry) {
         review.deleteDailyDays.push(entry);
@@ -970,6 +1262,29 @@
       });
     });
 
+    selectedManualEventIds.forEach(function (eventId) {
+      const eventRecord = state.allEvents.find(function (record) {
+        return record.id === eventId;
+      });
+      if (!eventRecord || normalizeText(eventRecord.data && eventRecord.data.source) !== MANUAL_SOURCE) {
+        review.warnings.push("手動加算記録 " + eventId + " が見つかりません。再読み込みしてください。");
+        return;
+      }
+      const data = eventRecord.data || {};
+      review.relatedItems.push(
+        "手動加算: " + formatManualAdjustmentDate(data)
+          + " / " + formatSignedPoints(data.points)
+          + " / " + (normalizeText(data.reason) || "理由未登録")
+      );
+      review.deleteEventIds.push(eventRecord.id);
+      review.manualDeletePoints += getNumericValue(data.points);
+      review.deleteItems.push(
+        "手動加算記録: " + eventRecord.id
+          + " (" + formatSignedPoints(data.points)
+          + "、点検記録は削除しません)"
+      );
+    });
+
     review.deleteEventIds = uniqueValues(review.deleteEventIds);
     review.deleteTireRecords = uniqueRecords(review.deleteTireRecords);
     review.deleteDailyDays = uniqueDailyDayEntries(review.deleteDailyDays);
@@ -979,12 +1294,22 @@
     });
     const afterBreakdown = calculateEventBreakdown(remainingEvents);
     review.eventTotalAfter = afterBreakdown.total;
-    review.summaryAfter = afterBreakdown.total;
-    review.deleteSummaryAfter = remainingEvents.length === 0;
+    if (review.targetType === "manualPoints") {
+      review.summaryAfter = review.summaryBefore - review.manualDeletePoints;
+      review.deleteSummaryAfter = false;
+    } else {
+      review.summaryAfter = afterBreakdown.total;
+      review.deleteSummaryAfter = remainingEvents.length === 0;
+    }
     review.summaryPayload = buildSummaryPayload(schema, review, afterBreakdown);
     review.integrityItems = buildIntegrityMessages(review);
     review.canExecute = review.errors.length === 0
       && (review.deleteEventIds.length > 0 || review.deleteTireRecords.length > 0 || review.deleteDailyDays.length > 0);
+
+    if (selectedManualEventIds.length && !selectedDayKeys.length) {
+      review.logAction = "deleteManualPointAdjustments";
+      review.executeLabel = "選択した手動加算を削除";
+    }
     return review;
   }
 
@@ -999,8 +1324,8 @@
 
     if (review.errors.length === 0) {
       messages.push({
-        type: "ok",
-        text: review.ignoreIntegrityErrors ? "整合性: 警告のみ（日付削除は実行可）" : "整合性: OK"
+        type: review.warnings.length ? "warning" : "ok",
+        text: review.warnings.length ? "整合性: 警告あり（内容を確認して実行可）" : "整合性: OK"
       });
     } else {
       messages.push({ type: "error", text: "整合性: NG" });
@@ -1074,46 +1399,131 @@
     setStatus("削除処理を実行しています...");
 
     try {
-      const batch = state.pointsDb.batch();
       const FieldValue = window.firebase.firestore.FieldValue;
-      const now = FieldValue.serverTimestamp();
       const schema = state.activeSchema || buildFallbackSchema(pointsSettings.preferredCollection || "driver-points");
       const summaryRef = getSummaryRef(schema, review);
 
-      review.deleteDailyDays.forEach(function (entry) {
-        batch.update(entry.record.ref, buildDailyDayDeletePayload(entry.day, FieldValue, now));
-      });
-      review.deleteTireRecords.forEach(function (record) {
-        batch.delete(record.ref);
-      });
-      review.deleteEventIds.forEach(function (eventId) {
-        const eventRecord = state.allEvents.find(function (record) {
-          return record.id === eventId;
-        });
-        if (eventRecord) {
-          batch.delete(eventRecord.ref);
-        }
-      });
-      if (review.deleteSummaryAfter) {
-        batch.delete(summaryRef);
-      } else if (!review.skipSummaryUpdate) {
-        batch.set(summaryRef, review.summaryPayload, { merge: true });
-      }
-      batch.set(state.pointsDb.collection(LOG_COLLECTION).doc(), buildLogPayload(review, FieldValue));
+      if (review.targetType === "manualPoints") {
+        await executeManualPointDeletion(review, schema, summaryRef, FieldValue);
+      } else {
+        const batch = state.pointsDb.batch();
+        const now = FieldValue.serverTimestamp();
 
-      await batch.commit();
+        review.deleteDailyDays.forEach(function (entry) {
+          batch.update(entry.record.ref, buildDailyDayDeletePayload(entry.day, FieldValue, now));
+        });
+        review.deleteTireRecords.forEach(function (record) {
+          batch.delete(record.ref);
+        });
+        review.deleteEventIds.forEach(function (eventId) {
+          const eventRecord = state.allEvents.find(function (record) {
+            return record.id === eventId;
+          });
+          if (eventRecord) {
+            batch.delete(eventRecord.ref);
+          }
+        });
+        if (review.deleteSummaryAfter) {
+          batch.delete(summaryRef);
+        } else if (!review.skipSummaryUpdate) {
+          batch.set(summaryRef, review.summaryPayload, { merge: true });
+        }
+        batch.set(state.pointsDb.collection(LOG_COLLECTION).doc(), buildLogPayload(review, FieldValue));
+
+        await batch.commit();
+      }
+
       state.review = null;
       state.selectedDayKeys.clear();
+      state.selectedManualEventIds.clear();
       elements.reviewSection.hidden = true;
       setStatus("データ調整を実行し、ログを保存しました。");
       await loadContext();
     } catch (error) {
       console.warn("Failed to execute data adjustment:", error);
-      setStatus("データ調整の実行に失敗しました: " + formatError(error), true);
+      const errorCode = normalizeText(error && error.message);
+      if (
+        errorCode === "manual_point_event_changed" ||
+        errorCode === "point_summary_changed"
+      ) {
+        state.review = null;
+        elements.reviewSection.hidden = true;
+        setStatus("確認後にポイントデータが変更されました。最新データを読み込み直してから、もう一度確認してください。", true);
+        await loadContext();
+      } else {
+        setStatus("データ調整の実行に失敗しました: " + formatError(error), true);
+      }
     } finally {
       state.executing = false;
       syncButtons();
     }
+  }
+
+  async function executeManualPointDeletion(review, schema, summaryRef, FieldValue) {
+    const eventRecords = review.deleteEventIds.map(function (eventId) {
+      return state.allEvents.find(function (record) {
+        return record.id === eventId;
+      });
+    });
+    if (eventRecords.some(function (record) { return !record || !record.ref; })) {
+      throw new Error("manual_point_event_changed");
+    }
+
+    const logRef = state.pointsDb.collection(LOG_COLLECTION).doc();
+    await state.pointsDb.runTransaction(async function (transaction) {
+      const eventSnapshots = [];
+      for (const eventRecord of eventRecords) {
+        eventSnapshots.push(await transaction.get(eventRecord.ref));
+      }
+      const summarySnapshot = await transaction.get(summaryRef);
+
+      let deletedPoints = 0;
+      eventSnapshots.forEach(function (snapshot) {
+        const data = snapshot.exists ? (snapshot.data() || {}) : {};
+        const points = getNumericValue(data.points);
+        if (!snapshot.exists || normalizeText(data.source) !== MANUAL_SOURCE || points <= 0) {
+          throw new Error("manual_point_event_changed");
+        }
+        deletedPoints += points;
+      });
+
+      if (!summarySnapshot.exists) {
+        throw new Error("point_summary_changed");
+      }
+      const summaryData = summarySnapshot.data() || {};
+      const pointsFieldName = resolvePointsFieldName(summaryData, schema);
+      const currentPoints = getNumericValue(summaryData[pointsFieldName]);
+      if (currentPoints !== review.summaryBefore) {
+        throw new Error("point_summary_changed");
+      }
+      const nextPoints = currentPoints - deletedPoints;
+      const nextManualPoints = review.manualBefore - deletedPoints;
+      if (deletedPoints !== review.manualDeletePoints) {
+        throw new Error("manual_point_event_changed");
+      }
+      if (nextPoints < 0 || nextManualPoints < 0) {
+        throw new Error("point_summary_changed");
+      }
+
+      eventRecords.forEach(function (eventRecord) {
+        transaction.delete(eventRecord.ref);
+      });
+
+      const summaryPayload = {
+        totalPoints: nextPoints,
+        manualAdjustmentPoints: nextManualPoints,
+        updatedAt: FieldValue.serverTimestamp(),
+        lastSource: "adminDataAdjustment"
+      };
+      summaryPayload[pointsFieldName] = nextPoints;
+      transaction.set(summaryRef, summaryPayload, { merge: true });
+
+      const logPayload = buildLogPayload(review, FieldValue);
+      logPayload.summaryBefore = currentPoints;
+      logPayload.summaryAfter = nextPoints;
+      logPayload.deletedManualPoints = deletedPoints;
+      transaction.set(logRef, logPayload);
+    });
   }
 
   function buildDailyDayDeletePayload(day, FieldValue, now) {
@@ -1224,8 +1634,9 @@
       eventTotalBefore: review.eventTotalBefore,
       eventTotalAfter: review.eventTotalAfter,
       warnings: review.warnings.slice(),
+      operatorUid: getCurrentOperatorUid(),
       createdAt: FieldValue.serverTimestamp(),
-      createdBy: "管理画面"
+      createdBy: getCurrentOperatorUid() || "管理画面"
     };
   }
 
@@ -1237,6 +1648,13 @@
     state.tireRecords = [];
     state.monthsWithData = new Set();
     state.selectedDayKeys.clear();
+    state.selectedManualEventIds.clear();
+  }
+
+  function resetPointGrantReview() {
+    state.pointGrantReview = null;
+    elements.pointGrantReview.hidden = true;
+    elements.pointGrantReviewDetails.innerHTML = "";
   }
 
   function resetReview() {
@@ -1247,8 +1665,14 @@
 
   function syncButtons() {
     const hasSelection = hasBaseSelection();
-    elements.reviewButton.disabled = !hasSelection || state.loading || state.executing || !state.pointsDb;
-    elements.executeButton.disabled = !state.review || !state.review.canExecute || state.executing;
+    const busy = state.loading || state.executing || state.granting;
+    elements.pointGrantPoints.disabled = busy;
+    elements.pointGrantReason.disabled = busy;
+    elements.pointGrantReviewButton.disabled = !hasSelection || busy || !state.pointsDb;
+    elements.pointGrantExecuteButton.disabled = !state.pointGrantReview || busy;
+    elements.pointGrantCancelButton.disabled = state.granting;
+    elements.reviewButton.disabled = !hasSelection || busy || !state.pointsDb;
+    elements.executeButton.disabled = !state.review || !state.review.canExecute || busy;
   }
 
   function hasBaseSelection() {
@@ -1419,14 +1843,27 @@
     return details.length ? details : ["対象日の詳細データ: あり"];
   }
 
+  function getTireCurrentData(data) {
+    if (data && data.current && typeof data.current === "object") {
+      return data.current;
+    }
+    if (data && data.state && data.state.current && typeof data.state.current === "object") {
+      return data.state.current;
+    }
+    return data && data.basicInfo && typeof data.basicInfo === "object" ? data.basicInfo : {};
+  }
+
   function getTireRecordDay(data) {
-    const inspectionDate = normalizeText(data && data.inspectionDate);
+    const current = getTireCurrentData(data);
+    const inspectionDate = normalizeText(current.inspectionDate || (data && data.inspectionDate));
     const match = /^\d{4}-\d{2}-(\d{1,2})/.exec(inspectionDate);
     return match ? normalizeDayNumber(match[1]) : 0;
   }
   function getTireRecordMonth(data) {
-    return normalizeMonthKey(data && data.targetMonth)
-      || normalizeMonthKey(normalizeText(data && data.inspectionDate).slice(0, 7));
+    const current = getTireCurrentData(data);
+    return normalizeMonthKey(data && data.inspectionMonth)
+      || normalizeMonthKey(current.targetMonth)
+      || normalizeMonthKey(normalizeText(current.inspectionDate || (data && data.inspectionDate)).slice(0, 7));
   }
 
   function getEventMonth(data) {
@@ -1500,7 +1937,7 @@
         breakdown.daily += points;
       } else if (normalizeText(data.source) === TIRE_SOURCE) {
         breakdown.tire += points;
-      } else if (normalizeText(data.source) === "manualAdjustment") {
+      } else if (normalizeText(data.source) === MANUAL_SOURCE) {
         breakdown.manual += points;
       } else {
         breakdown.other += points;
@@ -1659,6 +2096,10 @@
     return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
   }
 
+  function buildLocalDateKey(date) {
+    return buildLocalMonthKey(date) + "-" + String(date.getDate()).padStart(2, "0");
+  }
+
   function buildMonthKeyFromTimestamp(value) {
     const time = getTimeValue(value);
     if (!time) {
@@ -1761,11 +2202,13 @@
     if (!error) {
       return "unknown_error";
     }
-    if (error.code) {
-      return String(error.code);
+    const code = normalizeText(error.code);
+    const message = normalizeText(error.message);
+    if (code && message && code !== message) {
+      return code + ": " + message;
     }
-    if (error.message) {
-      return String(error.message);
+    if (code || message) {
+      return code || message;
     }
     return String(error);
   }

@@ -73,24 +73,59 @@
       setCopyPromptStatus("依頼文が見つかりません。", true);
       return;
     }
+
+    elements.copyPromptButton.disabled = true;
     try {
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-        await navigator.clipboard.writeText(promptText);
-      } else {
-        const range = document.createRange();
-        range.selectNodeContents(elements.codexPromptText);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-        const copied = document.execCommand("copy");
-        selection.removeAllRanges();
-        if (!copied) throw new Error("copy failed");
+      const copied = await copyTextToClipboard(promptText);
+      if (!copied) {
+        selectPromptText();
+        throw new Error("copy failed");
       }
       setCopyPromptStatus("依頼文をコピーしました。", false);
     } catch (error) {
       console.warn("Failed to copy prompt text:", error);
-      setCopyPromptStatus("コピーに失敗しました。依頼文を選択してコピーしてください。", true);
+      setCopyPromptStatus("自動コピーに失敗しました。選択中の依頼文を Ctrl+C でコピーしてください。", true);
+    } finally {
+      elements.copyPromptButton.disabled = false;
     }
+  }
+
+  async function copyTextToClipboard(text) {
+    if (window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (error) {
+        console.warn("Clipboard API failed; using fallback copy:", error);
+      }
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.inset = "0 auto auto -9999px";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+
+    let copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } finally {
+      textarea.remove();
+    }
+    return copied;
+  }
+
+  function selectPromptText() {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(elements.codexPromptText);
+    selection.removeAllRanges();
+    selection.addRange(range);
   }
 
   function setCopyPromptStatus(message, isError) {
