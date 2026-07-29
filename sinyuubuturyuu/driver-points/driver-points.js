@@ -97,6 +97,29 @@
     db.__sinyuubuturyuuEmulatorConnected = true;
   }
 
+  function getFirebaseAppForConfig(appModule, config) {
+    const apps = typeof appModule.getApps === "function" ? appModule.getApps() : [];
+    const expectedProjectId = String(config && config.projectId ? config.projectId : "").trim();
+    const matchedApp = apps.find((app) => {
+      const projectId = app && app.options ? String(app.options.projectId || "").trim() : "";
+      return projectId && projectId === expectedProjectId;
+    });
+
+    if (matchedApp) {
+      return matchedApp;
+    }
+    if (!apps.length) {
+      return appModule.initializeApp(config);
+    }
+
+    const appName = `driver-points-${expectedProjectId || "firebase"}`;
+    try {
+      return appModule.getApp(appName);
+    } catch {
+      return appModule.initializeApp(config, appName);
+    }
+  }
+
   function normalizeDriverName(value) {
     const text = normalizeText(value)
       .replace(/\s*[（(][^）)]*[）)]\s*/g, " ")
@@ -444,7 +467,7 @@
     }
 
     runtimeState.promise = (async () => {
-      const [{ getApp, getApps, initializeApp }, authModule, firestoreModule] = await Promise.all([
+      const [appModule, authModule, firestoreModule] = await Promise.all([
         import("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js"),
         import("https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js"),
         import("https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js")
@@ -461,9 +484,7 @@
       }
 
       if (!app) {
-        app = typeof getApps === "function" && getApps().length
-          ? getApp()
-          : initializeApp(FIREBASE_CONFIG);
+        app = getFirebaseAppForConfig(appModule, FIREBASE_CONFIG);
       }
       if (!auth) {
         auth = authModule.getAuth(app);

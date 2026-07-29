@@ -38,46 +38,33 @@
           </div>
           <button id="copyPromptButton" class="button primary copy-button" type="button">依頼文をコピー</button>
         </div>
-        <pre id="codexPromptText" class="prompt-text" tabindex="0">次の2つのdocsをすべて確認し、最新の upstream/main を基点に、開発環境への切替を行ってください。
+        <pre id="codexPromptText" class="prompt-text" tabindex="0">次の2つのdocsを参照し、mainの最新状態から作業当日の日付を使った feature/dev-env-YYYY-MM-DD ブランチを作成して、Firebaseクラウド開発環境へ切り替えてください。
 
 参照するdocs:
 - docs/firebase-auth-email-password-spec.md
 - docs/firebase-auth-pc-spec.md
 
-ブランチ:
-- 作業当日の日付で feature/dev-env-YYYY-MM-DD を作成してください。
-- 日付を固定値にしないでください。
-- 既存の同名ブランチがある場合は、削除や再利用の前に差分を確認して報告してください。
-- mainへ直接変更を入れないでください。
-
-対象環境:
-- クラウド開発環境: sinyuubuturyuu-dev
-- 本番環境: sinyuubuturyuu-86aeb
-- ローカルEmulatorとは混同しないでください。
-
-作業条件:
-- 最初に実行コード内のFirebase設定、初期化、Service Worker、キャッシュ参照を検索し、現在の影響範囲を確認してください。
-- docsに記載された設定ファイル一覧は主要候補であり、固定された完全一覧として扱わないでください。
-- 現在の開発用Webアプリ設定を信頼できる管理元で確認し、値を推測しないでください。
-- projectIdだけでなく、apiKey、authDomain、storageBucket、messagingSenderId、appIdを開発用設定へ揃えてください。
+条件:
+- YYYY-MM-DDは固定値ではなく、必ず作業当日の日付へ置き換えてください。
+- 本番Firebase sinyuubuturyuu-86aebへの通信・書込みを防いでください。
+- 開発Firebase sinyuubuturyuu-devの現在のWebアプリ設定を信頼できる管理元で確認し、値を推測しないでください。
+- projectIdだけでなく、apiKey、authDomain、storageBucket、messagingSenderId、appIdを同じ開発プロジェクトの値へ揃えてください。
 - measurementIdは開発用設定に存在する場合だけ使用してください。
-- Firebaseアプリ再利用時はprojectIdも検査し、本番アプリの取り違えを防いでください。
-- 本番と開発でService Workerおよびブラウザキャッシュが混ざらないようにしてください。
-- 開発環境であることを画面上で識別できるようにしてください。
-- テスト用パスワードやサービスアカウント鍵をコード・docsへ記載しないでください。
-- 社員情報訂正機能はまだ修正しないでください。
+- Firebaseアプリ再利用時はapp.options.projectIdがsinyuubuturyuu-devと一致することを確認してください。
+- Service Worker、キャッシュ名、HTMLの読込みバージョンを本番環境と分離してください。
+- 開発環境であることを画面上で識別できる状態にしてください。
+- docs記載のファイル一覧を固定一覧と考えず、実行コードのFirebase参照と現在の差分から影響範囲を確認してください。
+- 環境切替と無関係な既存変更や未コミット変更を失わないでください。
+- mainへ直接変更を入れないでください。
 - Firebaseデータ変更、デプロイ、commit、push、PR作成は行わないでください。
 
 確認:
-- 実行対象ソースに本番プロジェクトIDが接続設定として残っていないこと
-- projectIdがsinyuubuturyuu-devであること
-- 変更したJavaScriptの構文確認とgit diff --check
-- 差分が開発環境切替だけであること
-- 本番復帰時に取り除く環境差分を一覧化できること
+- 実際に使われるFirebase設定のprojectIdがsinyuubuturyuu-devであること。
+- 実際に使われるFirebase設定オブジェクトに本番用の値が残っていないこと。
+- 環境判定用定数、docs、説明文のIDは接続設定と分けて判定すること。
+- 変更JavaScriptのnode --checkとgit diff --checkが成功すること。
 
-実行時確認は、私が別途依頼した場合だけ行ってください。行う場合は古いService Workerとキャッシュの影響を除き、実際のapp.options.projectIdとAuth・Firestoreの通信先を確認してください。本番へは書き込まないでください。
-
-最後に、ブランチ、基点コミット、変更ファイルと理由、設定の確認元（秘密情報を除く）、確認結果、未確認事項、各種外部操作の有無を報告してください。</pre>
+最後に、作成したブランチ、基点、変更ファイルと理由、確認結果、保持した既存変更、未確認事項、Firebaseデータ変更・デプロイ・commit・push・PR作成の有無を報告してください。</pre>
         <p id="copyPromptStatus" class="status-text" aria-live="polite"></p>
       </section>
 
@@ -120,6 +107,6 @@
       </section>
     </section>
   </main>
-  <script src="./checklist.js"></script>
+  <script src="./checklist.js?v=20260727a"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const APP_VERSION = "20260504a";
+const APP_VERSION = "20260729a";
 const VERSION_PARAM = "v";
 
 self.addEventListener("install", function (event) {

@@ -8,9 +8,9 @@
       title: "必須確認",
       description: "本番設定へ安全に戻すための7項目だけを確認します。",
       items: [
-        { id: "required-restore", label: "開発環境用の差分を正確に取り除いている", note: "本番値を手入力で再作成せず、記録した環境差分または最新mainを基準に戻す。" },
+        { id: "required-restore", label: "接続先やキャッシュなど環境固有の差分を本番用へ戻している", note: "本番値を手入力で再作成せず、記録した環境差分または最新mainを基準に戻す。" },
         { id: "required-config", label: "実行コードのFirebase設定一式が確認済みの本番用設定である", note: "projectIdだけでなく関連する設定値を確認する。" },
-        { id: "required-no-dev", label: "開発用の接続設定・表示・キャッシュ名が残っていない", note: "docs内の説明用IDとは分けて確認する。" },
+        { id: "required-no-dev", label: "開発用の接続設定・キャッシュ名が残らず、DEV表示が本番で非表示になっている", note: "DEV表示機能のコードは保持し、文字・背景・枠・余白を含む要素全体がブラウザ上で消えていることを確認する。" },
         { id: "required-cache", label: "Service Workerとキャッシュの更新経路が本番用である", note: "古い開発設定が再配信されない。" },
         { id: "required-checks", label: "構文確認とgit diff --checkが成功している", note: "変更ファイル一覧と理由も確認する。" },
         { id: "required-diff", label: "最終差分に意図した機能変更だけが残っている", note: "環境切替だけのブランチをmainへマージしない。" },
@@ -80,27 +80,58 @@
       return;
     }
 
+    elements.copyPromptButton.disabled = true;
     try {
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-        await navigator.clipboard.writeText(promptText);
-      } else {
-        const range = document.createRange();
-        range.selectNodeContents(elements.codexPromptText);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-        const copied = document.execCommand("copy");
-        selection.removeAllRanges();
-        if (!copied) {
-          throw new Error("copy failed");
-        }
+      const copied = await copyTextToClipboard(promptText);
+      if (!copied) {
+        selectPromptText();
+        throw new Error("copy failed");
       }
-
       setCopyPromptStatus("依頼文をコピーしました。 Codex へそのまま貼り付けてください。", false);
     } catch (error) {
       console.warn("Failed to copy prompt text:", error);
-      setCopyPromptStatus("コピーに失敗しました。依頼文を選択して手動でコピーしてください。", true);
+      setCopyPromptStatus("自動コピーに失敗しました。選択中の依頼文を Ctrl+C でコピーしてください。", true);
+    } finally {
+      elements.copyPromptButton.disabled = false;
     }
+  }
+
+  async function copyTextToClipboard(text) {
+    if (window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (error) {
+        console.warn("Clipboard API failed; using fallback copy:", error);
+      }
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.inset = "0 auto auto -9999px";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+
+    let copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } finally {
+      textarea.remove();
+    }
+    return copied;
+  }
+
+  function selectPromptText() {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(elements.codexPromptText);
+    selection.removeAllRanges();
+    selection.addRange(range);
   }
 
   function setCopyPromptStatus(message, isError) {
