@@ -1,10 +1,10 @@
-const CACHE_NAME = "sinyuubuturyuu-launcher-v27";
+const CACHE_NAME = "sinyuubuturyuu-launcher-v28";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./launcher.css?v=20260727b",
-  "./launcher.js?v=20260727a",
-  "./shared-settings.js?v=20260727a",
+  "./launcher.js?v=20260801a",
+  "./shared-settings.js?v=20260801a",
   "./getujitiretenkenhyou/firebase/firebase-config.js?v=20260727a",
   "./auth/firebase-auth.js?v=20260727a",
   "./getujitiretenkenhyou/firebase/firebase-cloud-sync.js?v=20260727a",
