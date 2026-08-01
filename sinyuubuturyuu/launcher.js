@@ -60,7 +60,7 @@ const DAILY_INSPECTION_APP_SETTINGS = Object.freeze({
 });
 const DAILY_INSPECTION_STORAGE_NAMESPACE = "monthly_inspection_app_v1";
 const DAILY_INSPECTION_MIN_SELECTABLE_MONTH = "2025-10";
-const DAILY_INSPECTION_MAX_SELECTABLE_MONTH_COUNT = 4;
+const DAILY_INSPECTION_RECENT_MONTH_COUNT = 4;
 const DAILY_INSPECTION_FIREBASE_REQUIRED_KEYS = ["apiKey", "authDomain", "projectId", "appId"];
 const DAILY_INSPECTION_CHECK_SEQUENCE = ["", "レ", "×", "▲"];
 const DAILY_INSPECTION_HOLIDAY_CHECK = "休";
@@ -956,18 +956,44 @@ function buildCloudPayload() {
   };
 }
 
-function buildSelectableMonthKeys(date = new Date()) {
+function buildSelectableMonthKeys(date = new Date(), options = {}) {
+  if (sharedSettings && typeof sharedSettings.buildInspectionTargetMonthKeys === "function") {
+    return sharedSettings.buildInspectionTargetMonthKeys(date, {
+      minimumMonthCount: 4,
+      fiscalYearStartMonth: 4,
+      ...options,
+    });
+  }
+
   const keys = [];
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
+  const minimumMonthCount = Number.isInteger(options.minimumMonthCount) && options.minimumMonthCount > 0
+    ? options.minimumMonthCount
+    : 4;
+  const fiscalYearStart = month >= 4 ? year : year - 1;
+  const fiscalStartDate = new Date(fiscalYearStart, 3, 1);
+  const rollingStartDate = new Date(year, month - minimumMonthCount, 1);
+  let startDate = rollingStartDate < fiscalStartDate ? rollingStartDate : fiscalStartDate;
+  const minimumMonth = /^(\d{4})-(\d{2})$/.exec(String(options.minimumMonthKey || ""));
 
-  for (let currentMonth = month; currentMonth >= 1; currentMonth -= 1) {
-    keys.push(`${year}-${String(currentMonth).padStart(2, "0")}`);
+  if (minimumMonth) {
+    const minimumDate = new Date(Number(minimumMonth[1]), Number(minimumMonth[2]) - 1, 1);
+    const currentDate = new Date(year, month - 1, 1);
+    if (currentDate < minimumDate) {
+      return [`${year}-${String(month).padStart(2, "0")}`];
+    }
+    if (startDate < minimumDate) {
+      startDate = minimumDate;
+    }
   }
 
-  const previousYearMonthCount = Math.max(0, 4 - month);
-  for (let offset = 0; offset < previousYearMonthCount; offset += 1) {
-    keys.push(`${year - 1}-${String(12 - offset).padStart(2, "0")}`);
+  for (
+    let cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    cursor <= new Date(year, month - 1, 1);
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
+  ) {
+    keys.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
   }
 
   return keys;
@@ -1168,27 +1194,10 @@ function addMonths(yearMonth, delta) {
 }
 
 function getDailyInspectionLookupMonths() {
-  const currentMonth = getCurrentYearMonth();
-  if (compareYearMonth(currentMonth, DAILY_INSPECTION_MIN_SELECTABLE_MONTH) < 0) {
-    return [currentMonth];
-  }
-
-  const lookupMonths = [];
-  let cursor = getDailyInspectionSelectableMonthStart(currentMonth);
-
-  while (compareYearMonth(cursor, currentMonth) <= 0) {
-    lookupMonths.push(cursor);
-    cursor = addMonths(cursor, 1);
-  }
-
-  return lookupMonths;
-}
-
-function getDailyInspectionSelectableMonthStart(currentMonth) {
-  const rollingStart = addMonths(currentMonth, -(DAILY_INSPECTION_MAX_SELECTABLE_MONTH_COUNT - 1));
-  return compareYearMonth(rollingStart, DAILY_INSPECTION_MIN_SELECTABLE_MONTH) < 0
-    ? DAILY_INSPECTION_MIN_SELECTABLE_MONTH
-    : rollingStart;
+  return buildSelectableMonthKeys(new Date(), {
+    minimumMonthCount: DAILY_INSPECTION_RECENT_MONTH_COUNT,
+    minimumMonthKey: DAILY_INSPECTION_MIN_SELECTABLE_MONTH,
+  });
 }
 
 function normalizeDailyInspectionChecksByDay(checksByDay) {

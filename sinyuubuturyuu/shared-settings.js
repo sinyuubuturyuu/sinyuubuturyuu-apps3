@@ -23,6 +23,9 @@
     { value: TRUCK_TYPES.FOURTON6, label: "4トン車" }
   ]);
 
+  const DEFAULT_INSPECTION_MONTH_COUNT = 4;
+  const DEFAULT_FISCAL_YEAR_START_MONTH = 4;
+
   const KATAKANA_RE = /[\u30A1-\u30F6]/g;
   const DRIVER_WITH_READING_RE = /^(.*?)[\s　]*[（(]([^（）()]+)[）)]$/;
   const JA_COLLATOR = new Intl.Collator("ja", {
@@ -47,6 +50,59 @@
 
   function normalizeText(value) {
     return String(value ?? "").trim();
+  }
+
+  function formatYearMonth(year, month) {
+    return `${year}-${String(month).padStart(2, "0")}`;
+  }
+
+  function parseYearMonth(value) {
+    const match = /^(\d{4})-(\d{2})$/.exec(String(value || "").trim());
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    if (!Number.isInteger(year) || month < 1 || month > 12) return null;
+    return { year, month };
+  }
+
+  function buildInspectionTargetMonthKeys(date = new Date(), options = {}) {
+    const sourceDate = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
+    const currentDate = new Date(sourceDate.getFullYear(), sourceDate.getMonth(), 1);
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1;
+    const minimumMonthCount = Number.isInteger(options.minimumMonthCount) && options.minimumMonthCount > 0
+      ? options.minimumMonthCount
+      : DEFAULT_INSPECTION_MONTH_COUNT;
+    const fiscalYearStartMonth = Number.isInteger(options.fiscalYearStartMonth)
+      && options.fiscalYearStartMonth >= 1
+      && options.fiscalYearStartMonth <= 12
+      ? options.fiscalYearStartMonth
+      : DEFAULT_FISCAL_YEAR_START_MONTH;
+    const rollingStartDate = new Date(currentYear, currentMonth - minimumMonthCount, 1);
+    const fiscalYearStart = currentMonth >= fiscalYearStartMonth ? currentYear : currentYear - 1;
+    const fiscalStartDate = new Date(fiscalYearStart, fiscalYearStartMonth - 1, 1);
+    let startDate = rollingStartDate < fiscalStartDate ? rollingStartDate : fiscalStartDate;
+
+    const minimumMonth = parseYearMonth(options.minimumMonthKey);
+    if (minimumMonth) {
+      const minimumDate = new Date(minimumMonth.year, minimumMonth.month - 1, 1);
+      if (currentDate < minimumDate) {
+        return [formatYearMonth(currentYear, currentMonth)];
+      }
+      if (startDate < minimumDate) {
+        startDate = minimumDate;
+      }
+    }
+
+    const monthKeys = [];
+    for (
+      let cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+      cursor <= currentDate;
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
+    ) {
+      monthKeys.push(formatYearMonth(cursor.getFullYear(), cursor.getMonth() + 1));
+    }
+    return monthKeys;
   }
 
   function normalizeLoginId(value) {
@@ -586,6 +642,7 @@
     normalizeVehicleProfiles,
     normalizeUserProfiles,
     normalizeCurrentTruckType,
+    buildInspectionTargetMonthKeys,
     truckTypeLabel
   });
 })();

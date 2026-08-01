@@ -18,7 +18,7 @@
       const LAST_COMMIT_PUSHED_AT = "2026-03-01 21:33";
       const MONTHLY_COMPLETE_IMAGE_SRC = "icons/monthly-complete.png";
       const MONTHLY_COMPLETE_IMAGE_ALT = "今月分はすべて入力済みです。来月もよろしくお願いします。";
-      const MAX_SELECTABLE_MONTH_COUNT = 4;
+      const RECENT_MONTH_COUNT = 4;
       const SEND_FAREWELL_IMAGE_SRCS = Object.freeze([
         "icons/send-farewell.png?v=20260315-15",
         "icons/send-farewell-02.png?v=20260518a"
@@ -286,9 +286,26 @@
         return parsed ? `${parsed.year}年${parsed.month}月分` : "未選択";
       };
       const buildSelectableMonthKeys = (date = new Date()) => {
+        if (sharedSettings && typeof sharedSettings.buildInspectionTargetMonthKeys === "function") {
+          return sharedSettings.buildInspectionTargetMonthKeys(date, {
+            minimumMonthCount: RECENT_MONTH_COUNT,
+            fiscalYearStartMonth: 4
+          });
+        }
+
         const keys = [];
-        const startDate = new Date(date.getFullYear(), date.getMonth() - (MAX_SELECTABLE_MONTH_COUNT - 1), 1);
-        for (let offset = 0; offset < MAX_SELECTABLE_MONTH_COUNT; offset += 1) {
+        const currentMonth = date.getMonth() + 1;
+        const fiscalYearStart = currentMonth >= 4 ? date.getFullYear() : date.getFullYear() - 1;
+        const fiscalStartDate = new Date(fiscalYearStart, 3, 1);
+        const rollingStartDate = new Date(date.getFullYear(), date.getMonth() - (RECENT_MONTH_COUNT - 1), 1);
+        const startDate = rollingStartDate < fiscalStartDate ? rollingStartDate : fiscalStartDate;
+        const monthCount = (
+          (date.getFullYear() - startDate.getFullYear()) * 12
+          + date.getMonth()
+          - startDate.getMonth()
+          + 1
+        );
+        for (let offset = 0; offset < monthCount; offset += 1) {
           const targetDate = new Date(startDate.getFullYear(), startDate.getMonth() + offset, 1);
           keys.push(normalizeMonthKey(`${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, "0")}`));
         }

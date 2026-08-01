@@ -9,7 +9,7 @@ const HOLIDAY_CHECK = "休";
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 const STORAGE_NAMESPACE = "monthly_inspection_app_v1";
 const MIN_SELECTABLE_MONTH = "2025-10";
-const MAX_SELECTABLE_MONTH_COUNT = 4;
+const RECENT_MONTH_COUNT = 4;
 const THEME_COLORS = Object.freeze({
   light: "#f3f5f8",
   dark: "#0f1722"
@@ -19,7 +19,7 @@ const INSPECTION_GUIDE_MESSAGE = `未入力日のみ表示しています。
 タップすると空欄 → レ → × → ▲と入力されます。　
 休みの日は日付を押して休みとしてください。もう一度押すと解除できます。
 一日分以上を入力したら上の送信ボタンを押してください。`;
-const APP_VERSION = "20260727a";
+const APP_VERSION = "20260801a";
 const MONTHLY_COMPLETE_IMAGE_SRC = "./icons/monthly-complete.png";
 const MONTHLY_COMPLETE_IMAGE_ALT = "今月分はすべて完了しました。明日もよろしくお願いします。";
 const SEND_FAREWELL_IMAGE_SRCS = Object.freeze([
@@ -1841,23 +1841,37 @@ function syncTargetMonth(preferredMonth = getCurrentYearMonth()) {
   syncDraftForTargetMonth();
 }
 
-function getSelectableMonths() {
-  const currentMonth = getCurrentYearMonth();
+function getInspectionTargetMonthKeys(date = new Date()) {
+  if (sharedSettings && typeof sharedSettings.buildInspectionTargetMonthKeys === "function") {
+    return sharedSettings.buildInspectionTargetMonthKeys(date, {
+      minimumMonthCount: RECENT_MONTH_COUNT,
+      fiscalYearStartMonth: 4,
+      minimumMonthKey: MIN_SELECTABLE_MONTH
+    });
+  }
+
+  const currentMonth = toYearMonth(date.getFullYear(), date.getMonth() + 1);
   if (compareYearMonth(currentMonth, MIN_SELECTABLE_MONTH) < 0) {
     return [currentMonth];
   }
-
-  const months = [];
-  let cursor = getSelectableMonthStart(currentMonth);
-
-  while (compareYearMonth(cursor, currentMonth) <= 0) {
-    if (getPendingDays(cursor).length > 0) {
-      months.push(cursor);
-    }
-    cursor = addMonths(cursor, 1);
+  const fiscalYearStart = date.getMonth() + 1 >= 4 ? date.getFullYear() : date.getFullYear() - 1;
+  const fiscalStart = toYearMonth(fiscalYearStart, 4);
+  const rollingStart = addMonths(currentMonth, -(RECENT_MONTH_COUNT - 1));
+  let cursor = compareYearMonth(rollingStart, fiscalStart) < 0 ? rollingStart : fiscalStart;
+  if (compareYearMonth(cursor, MIN_SELECTABLE_MONTH) < 0) {
+    cursor = MIN_SELECTABLE_MONTH;
   }
 
-  return months;
+  const monthKeys = [];
+  while (compareYearMonth(cursor, currentMonth) <= 0) {
+    monthKeys.push(cursor);
+    cursor = addMonths(cursor, 1);
+  }
+  return monthKeys;
+}
+
+function getSelectableMonths() {
+  return getInspectionTargetMonthKeys().filter((month) => getPendingDays(month).length > 0);
 }
 
 function clearCompletionMarker() {
@@ -1869,8 +1883,8 @@ function clearCompletionMarker() {
 }
 
 function getSelectableMonthStart(currentMonth) {
-  const rollingStart = addMonths(currentMonth, -(MAX_SELECTABLE_MONTH_COUNT - 1));
-  return compareYearMonth(rollingStart, MIN_SELECTABLE_MONTH) < 0 ? MIN_SELECTABLE_MONTH : rollingStart;
+  const { year, month } = parseYearMonth(currentMonth);
+  return getInspectionTargetMonthKeys(new Date(year, month - 1, 1))[0] || currentMonth;
 }
 
 function resolveSelectableMonth(preferredMonth, availableMonths) {
