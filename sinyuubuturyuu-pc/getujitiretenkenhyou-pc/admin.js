@@ -8,7 +8,7 @@
     maker: ["ミシュラン", "サイルン", "チャオヤン", "トーヨー", "ジンユー", "ブリヂストン", "ダンロップ", "ヨコハマ"],
     type: ["ノーマル", "スタッドレス", "再生", "リグ"],
     groove: ["○", "△", "☓"],
-    wear: ["○", "☓"],
+    wear: ["○", "△", "☓"],
     damage: ["○", "☓"],
     pressure: ["○", "☓"]
   };
@@ -847,7 +847,14 @@
       return text;
     }
 
-    if (field === "wear" || field === "damage" || field === "pressure") {
+    if (field === "wear") {
+      if (isCircle) return "○";
+      if (isTriangle) return "△";
+      if (isCross) return "☓";
+      return text;
+    }
+
+    if (field === "damage" || field === "pressure") {
       if (isCircle) return "○";
       if (isCross) return "☓";
       return text;
