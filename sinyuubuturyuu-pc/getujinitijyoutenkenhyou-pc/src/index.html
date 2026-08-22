@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="../../version-sync.js?v=20260822c"></script>
+  <script src="../../version-sync.js?v=20260822d"></script>
   <script>
     (function () {
       const versionSync = window.SinyuubuturyuuPcVersion || null;
-      const version = versionSync ? versionSync.ensureLatestVersion("20260822c") : "20260822c";
+      const version = versionSync ? versionSync.ensureLatestVersion("20260822d") : "20260822d";
       if (!version) return;
       window.__SINYUUBUTURYUU_PC_VERSION__ = version;
     })();
@@ -15,7 +15,7 @@
   <title>シンユウ物流パソコン用</title>
   <link rel="icon" type="image/png" href="../../icons/icon-sinyuubuturyuu-pc.png" />
   <link rel="apple-touch-icon" href="../../icons/icon-sinyuubuturyuu-pc.png" />
-  <link rel="stylesheet" href="./styles.css?v=20260822c" />
+  <link rel="stylesheet" href="./styles.css?v=20260822d" />
 </head>
 <body>
   <header class="app-header">
@@ -125,7 +125,7 @@
   <script>
     (function () {
       const version = window.__SINYUUBUTURYUU_PC_VERSION__
-        || (window.SinyuubuturyuuPcVersion ? window.SinyuubuturyuuPcVersion.getVersion("20260822c") : "20260822c");
+        || (window.SinyuubuturyuuPcVersion ? window.SinyuubuturyuuPcVersion.getVersion("20260822d") : "20260822d");
       const launcherUrl = new URL("../../index.html", window.location.href);
       launcherUrl.searchParams.set("returnTo", window.location.href);
 
