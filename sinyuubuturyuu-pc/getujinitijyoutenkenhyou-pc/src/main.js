@@ -185,7 +185,7 @@ const GROUPS = [
     contents: ["※冷却水の量", "※ファンベルトの張り具合・損傷", "※エンジンオイルの量", "※かかり具合、異音", "※低速、加速の状態"]
   },
   { category: "5. 燈火装置", contents: ["点灯・点滅具合、汚れ及び損傷"] },
-  { category: "6. ワイパー", contents: ["※液量、噴射状態", "※ワイパー払拭状態"] },
+  { category: "6. ウィンドウォッシャー及びワイパー", contents: ["※液量、噴射状態", "※ワイパー払拭状態"] },
   { category: "7. エアタンク", contents: ["エアタンクに凝水がない"] },
   {
     category: "8. その他",
@@ -2035,6 +2035,26 @@ function serializeXmlDocument(xmlDoc) {
     : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>${xmlText}`;
 }
 
+function normalizeExcelInspectionLabels(sharedStringsDoc) {
+  const replacements = [
+    ["ウィンド・ウォッシャー", "ウィンドウォッシャー"],
+    ["ファン･ベルト", "ファンベルト"],
+    ["ファン・ベルト", "ファンベルト"],
+    ["エンジン・オイル", "エンジンオイル"],
+    ["エア・タンク", "エアタンク"],
+    ["検査賞", "検査証"],
+    ["\n　　及びワイパー", "\n及びワイパー"]
+  ];
+
+  Array.from(sharedStringsDoc.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "t")).forEach((textNode) => {
+    let nextText = textNode.textContent || "";
+    replacements.forEach(([currentText, replacementText]) => {
+      nextText = nextText.replaceAll(currentText, replacementText);
+    });
+    textNode.textContent = nextText;
+  });
+}
+
 function getZipDirectoryPath(filePath) {
   return filePath.slice(0, filePath.lastIndexOf("/"));
 }
@@ -3088,6 +3108,10 @@ async function downloadExcel(options = {}) {
   ]);
   const workbook = await JSZip.loadAsync(templateBuffer);
   const contentTypesDoc = parseXmlDocument(await workbook.file("[Content_Types].xml").async("string"));
+  const sharedStringsFile = workbook.file("xl/sharedStrings.xml");
+  const sharedStringsDoc = sharedStringsFile
+    ? parseXmlDocument(await sharedStringsFile.async("string"))
+    : null;
   const stylesDoc = parseXmlDocument(await workbook.file("xl/styles.xml").async("string"));
   const workbookDoc = parseXmlDocument(await workbook.file("xl/workbook.xml").async("string"));
   const workbookRelsDoc = parseXmlDocument(await workbook.file("xl/_rels/workbook.xml.rels").async("string"));
@@ -3135,6 +3159,10 @@ async function downloadExcel(options = {}) {
   }
 
   workbook.file("[Content_Types].xml", serializeXmlDocument(contentTypesDoc));
+  if (sharedStringsDoc) {
+    normalizeExcelInspectionLabels(sharedStringsDoc);
+    workbook.file("xl/sharedStrings.xml", serializeXmlDocument(sharedStringsDoc));
+  }
   workbook.file("xl/styles.xml", serializeXmlDocument(stylesDoc));
   setWorkbookActiveSheet(workbookDoc, 0, 0);
   workbook.file("xl/workbook.xml", serializeXmlDocument(workbookDoc));
