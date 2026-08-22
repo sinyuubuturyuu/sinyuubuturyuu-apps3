@@ -961,6 +961,27 @@ function isDayInspectionComplete(recordState = {}, day) {
   return getDayInspectionValues(recordState, day).every((value) => value && value !== HOLIDAY_MARK);
 }
 
+function isMonthRecordComplete(monthKey, recordState = {}) {
+  const { year, month } = parseYearMonthKey(monthKey);
+  const daysInMonth = getDaysInMonth(year, month);
+  const holidayDays = new Set(mergeHolidayDays(recordState.holidayDays || [], recordState.checks || {}, daysInMonth));
+
+  if (!(recordState.operationManager || "").trim() || !(recordState.maintenanceManager || "").trim()) {
+    return false;
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    if (holidayDays.has(day)) {
+      continue;
+    }
+    if (!isDayInspectionComplete(recordState, day) || !(recordState.maintenanceBottomByDay?.[String(day)] || "").trim()) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function collectIncompleteInspectionDays(monthKey, recordState = {}) {
   const { year, month } = parseYearMonthKey(monthKey);
   const daysInMonth = getDaysInMonth(year, month);
@@ -1003,10 +1024,22 @@ function renderMonthTabs() {
     const monthRecord = entry.monthKey === state.activeMonthKey
       ? snapshotCurrentMonthState()
       : state.recordsByMonth[entry.monthKey];
-    if (monthRecordHasContent(monthRecord)) {
+    const isComplete = isMonthRecordComplete(entry.monthKey, monthRecord);
+    const hasContent = monthRecordHasContent(monthRecord);
+    if (isComplete) {
+      button.classList.add("is-complete");
+    } else if (hasContent) {
       button.classList.add("is-loaded");
     }
+    if (isComplete || hasContent) {
+      button.classList.add("has-status");
+    }
     button.textContent = `${entry.month}月`;
+    const statusLabel = isComplete
+      ? "点検・押印すべて入力済み"
+      : (hasContent ? "入力あり・未完了" : "未入力");
+    button.setAttribute("aria-label", `${entry.month}月 ${statusLabel}`);
+    button.title = statusLabel;
     button.addEventListener("click", () => {
       switchActiveMonth(entry.monthKey);
     });
@@ -1181,6 +1214,7 @@ function renderMaintenanceRecordCell() {
         return;
       }
       renderMaintenanceRecordCell();
+      renderMonthTabs();
       setStatus(`${day}日の整備記録を更新しました。保存すると Firebase に反映されます。`);
     });
     list.append(entry);
@@ -1313,6 +1347,7 @@ async function markHolidayForDay(day) {
     syncMaintenanceRecordsByDay();
     renderMaintenanceRecordCell();
     setStatus(`${day}日の休日設定を解除しました。保存すると反映されます。`);
+    renderMonthTabs();
     return;
   }
 
@@ -1322,6 +1357,7 @@ async function markHolidayForDay(day) {
   setHolidayHeaderState(day, true);
   syncMaintenanceRecordsByDay();
   renderMaintenanceRecordCell();
+  renderMonthTabs();
   setStatus(`${day}日を休日に設定しました。保存すると反映されます。`);
 }
 
@@ -1469,12 +1505,14 @@ function setBottomStampByDay(day, value) {
 function toggleStamp(target, value) {
   const nextValue = state[target] === value ? "" : value;
   setStamp(target, nextValue);
+  renderMonthTabs();
 }
 
 function toggleBottomStampByDay(day, value) {
   const dayKey = String(day);
   const nextValue = state.maintenanceBottomByDay[dayKey] === value ? "" : value;
   setBottomStampByDay(day, nextValue);
+  renderMonthTabs();
 }
 
 function fillBlankChecksForWorkingDays() {
@@ -1503,6 +1541,7 @@ function fillBlankChecksForWorkingDays() {
   if (updatedCount > 0) {
     syncMaintenanceRecordsByDay();
     renderMaintenanceRecordCell();
+    renderMonthTabs();
   }
 
   setStatus("\u672a\u5165\u529b\u306e\u70b9\u691c\u6b04" + updatedCount + "\u4ef6\u306b\u30ec\u70b9\u3092\u5165\u308c\u307e\u3057\u305f\u3002\u4fdd\u5b58\u30dc\u30bf\u30f3\u3067\u4fdd\u5b58\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
@@ -1522,6 +1561,7 @@ function stampMaintenanceManagerForWorkingDays() {
     stampedCount += 1;
   }
 
+  renderMonthTabs();
   setStatus(`休日を除く${stampedCount}日分に整備管理者印を押しました。保存すると反映されます。`);
 }
 
@@ -1640,16 +1680,10 @@ function syncToolbarWidth() {
   }
 }
 
-function printSheet() {
-  syncHeaderInfo();
-  window.print();
-}
-
 function showHelp() {
   const message = [
     "日付を押すと休日の設定になります。もう一度押すと解除できます。",
-    "読込、保存はFirebaseのデータに読込、保存されます。",
-    "印刷はA4横で印刷されます。"
+    "読込、保存はFirebaseのデータに読込、保存されます。"
   ].join("\n");
   setStatus(message);
   void alertInPage(message);
@@ -1699,6 +1733,7 @@ function renderBody() {
           syncMaintenanceRecordsByDay();
           setCheckCellState(td, next, false);
           renderMaintenanceRecordCell();
+          renderMonthTabs();
         });
         tr.append(td);
       }
@@ -1903,11 +1938,52 @@ function downloadBlob(blob, fileName) {
   URL.revokeObjectURL(downloadUrl);
 }
 
+async function selectExcelSaveTarget(fileName) {
+  if (typeof window.showSaveFilePicker !== "function") {
+    return { fileHandle: null, cancelled: false };
+  }
+
+  try {
+    const fileHandle = await window.showSaveFilePicker({
+      id: "daily-inspection-excel",
+      suggestedName: fileName,
+      startIn: "documents",
+      excludeAcceptAllOption: true,
+      types: [
+        {
+          description: "Excelブック",
+          accept: {
+            [EXCEL_MIME_TYPE]: [".xlsx"]
+          }
+        }
+      ]
+    });
+    return { fileHandle, cancelled: false };
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      return { fileHandle: null, cancelled: true };
+    }
+    throw error;
+  }
+}
+
+async function saveExcelBlob(excelBlob, fileName, fileHandle) {
+  if (!fileHandle) {
+    downloadBlob(excelBlob, fileName);
+    return false;
+  }
+
+  const writable = await fileHandle.createWritable();
+  await writable.write(excelBlob);
+  await writable.close();
+  return true;
+}
+
 function buildExcelFileName() {
-  const month = state.activeMonthKey || `${getSelectedFiscalYearStart()}年度`;
+  const fiscalYear = `${getCurrentFiscalYearStart()}年度`;
   const vehicle = sanitizeFileNamePart(vehicleEl.value, "vehicle");
   const driver = sanitizeFileNamePart(stripDriverReading(driverEl.value), "driver");
-  return `月次日常点検_${month}_${vehicle}_${driver}.xlsx`;
+  return `月次日常点検_${fiscalYear}_${vehicle}_${driver}.xlsx`;
 }
 
 async function getJsZipModule() {
@@ -2997,6 +3073,12 @@ async function downloadExcel(options = {}) {
     return;
   }
 
+  const saveTarget = await selectExcelSaveTarget(fileName);
+  if (saveTarget.cancelled) {
+    setStatus(`${statusLabel}保存をキャンセルしました`);
+    return;
+  }
+
   syncHolidayChecks();
   setStatus(`${statusLabel}ファイルを作成しています...`);
 
@@ -3063,8 +3145,12 @@ async function downloadExcel(options = {}) {
     mimeType: EXCEL_MIME_TYPE
   });
 
-  downloadBlob(excelBlob, fileName);
-  setStatus(`${statusLabel}ファイルを保存しました`);
+  const savedToSelectedLocation = await saveExcelBlob(excelBlob, fileName, saveTarget.fileHandle);
+  setStatus(
+    savedToSelectedLocation
+      ? `${statusLabel}ファイルを選択した場所に保存しました`
+      : `${statusLabel}ファイルをダウンロードしました`
+  );
 }
 
 function buildCsvRows() {
@@ -3688,10 +3774,6 @@ document.getElementById("loadBtn").addEventListener("click", () => {
   loadRecord().catch((err) => setStatus(`読込失敗: ${err.message}`, true));
 });
 
-document.getElementById("printBtn").addEventListener("click", () => {
-  printSheet();
-});
-
 helpBtnEl.addEventListener("click", () => {
   showHelp();
 });
@@ -3744,6 +3826,3 @@ renderBody();
 renderBottomStampRow();
 syncToolbarWidth();
 loadReferenceOptions().catch((err) => setStatus(`候補一覧の取得に失敗しました: ${err.message}`, true));
-
-
-
