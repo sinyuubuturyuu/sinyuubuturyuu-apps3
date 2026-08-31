@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <title>Redirecting...</title>
-  <script src="../version-sync.js?v=20260822d"></script>
+  <script src="../version-sync.js?v=20260831a"></script>
   <script>
     (function () {
       const versionSync = window.SinyuubuturyuuPcVersion || null;
-      const version = versionSync ? versionSync.getVersion("20260822d") : "20260822d";
+      const version = versionSync ? versionSync.getVersion("20260831a") : "20260831a";
       const targetUrl = new URL("./src/index.html", window.location.href);
       targetUrl.search = window.location.search;
       targetUrl.searchParams.set("v", version);
@@ -21,7 +21,7 @@
   <script>
     (function () {
       const versionSync = window.SinyuubuturyuuPcVersion || null;
-      const version = versionSync ? versionSync.getVersion("20260822d") : "20260822d";
+      const version = versionSync ? versionSync.getVersion("20260831a") : "20260831a";
       const fallbackLink = document.getElementById("openAppLink");
       if (!fallbackLink) {
         return;
