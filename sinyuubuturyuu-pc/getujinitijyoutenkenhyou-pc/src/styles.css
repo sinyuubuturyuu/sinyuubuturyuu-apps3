@@ -63,7 +63,7 @@ body {
 
 .toolbar {
   display: grid;
-  grid-template-columns: 170px 260px 220px 90px 90px 96px 90px minmax(180px, 1fr);
+  grid-template-columns: 170px 260px 220px 90px 90px 96px 96px 90px minmax(180px, 1fr);
   gap: 8px;
   align-items: end;
   width: max-content;

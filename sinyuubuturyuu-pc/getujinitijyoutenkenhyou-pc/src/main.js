@@ -21,6 +21,10 @@ const EXCEL_TEMPLATE_FILE_NAME = "月次日常点検 2026.xlsx";
 const EXCEL_TEMPLATE_ASSET_FILE_NAME = "monthly-inspection-template.xlsx";
 const EXCEL_TEMPLATE_API_PATH = "/api/excel-template";
 const EXCEL_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const EXCEL_RESTORE_SHEET_NAME = "復元データ";
+const EXCEL_RESTORE_SCHEMA = "sinyuubuturyuu-monthly-inspection";
+const EXCEL_RESTORE_SCHEMA_VERSION = 1;
+const EXCEL_RESTORE_CHUNK_SIZE = 30000;
 const EXCEL_REFERENCE_SHEET_NAME = "3月";
 const EXCEL_TEMPLATE_SHEET_NAME = "日常点検記録表原本";
 const EXCEL_MONTH_SHEET_NAMES = {
@@ -213,6 +217,7 @@ const operationHeadEl = document.getElementById("operationHead");
 const maintenanceHeadEl = document.getElementById("maintenanceHead");
 const driverHeadEl = document.getElementById("driverHead");
 const exportExcelBtnEl = document.getElementById("exportExcelBtn");
+const restoreExcelBtnEl = document.getElementById("restoreExcelBtn");
 const helpBtnEl = document.getElementById("helpBtn");
 const maintenanceNoteModalEl = document.getElementById("maintenanceNoteModal");
 const maintenanceNoteModalDayEl = document.getElementById("maintenanceNoteModalDay");
@@ -229,6 +234,7 @@ const state = {
   maintenanceRecordsByDay: {},
   holidayDays: [],
   loadedDocId: null,
+  restoredFromSpreadsheet: false,
   activeMonthKey: formatMonthKey(Number(monthEl.value) || 2026, 4),
   activeFiscalYearStart: null,
   recordsByMonth: {},
@@ -1915,6 +1921,7 @@ function resetAnnualRecordState(monthKey = formatMonthKey(getSelectedFiscalYearS
   state.recordsByMonth = {};
   state.activeMonthKey = monthKey;
   state.activeFiscalYearStart = getFiscalYearStartYear(year, month);
+  state.restoredFromSpreadsheet = false;
   resetRecordState();
 }
 
@@ -1962,6 +1969,58 @@ async function selectExcelSaveTarget(fileName) {
   } catch (error) {
     if (error?.name === "AbortError") {
       return { fileHandle: null, cancelled: true };
+    }
+    throw error;
+  }
+}
+
+function selectExcelRestoreFileWithInput() {
+  return new Promise((resolve) => {
+    const inputEl = document.createElement("input");
+    inputEl.type = "file";
+    inputEl.accept = ".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    inputEl.hidden = true;
+    document.body.append(inputEl);
+
+    inputEl.addEventListener("change", () => {
+      const file = inputEl.files?.[0] || null;
+      inputEl.remove();
+      resolve(file);
+    }, { once: true });
+
+    inputEl.addEventListener("cancel", () => {
+      inputEl.remove();
+      resolve(null);
+    }, { once: true });
+
+    inputEl.click();
+  });
+}
+
+async function selectExcelRestoreFile() {
+  if (typeof window.showOpenFilePicker !== "function") {
+    return selectExcelRestoreFileWithInput();
+  }
+
+  try {
+    const [fileHandle] = await window.showOpenFilePicker({
+      id: "daily-inspection-excel-restore",
+      startIn: "documents",
+      multiple: false,
+      excludeAcceptAllOption: true,
+      types: [
+        {
+          description: "スプレッドシート",
+          accept: {
+            [EXCEL_MIME_TYPE]: [".xlsx"]
+          }
+        }
+      ]
+    });
+    return fileHandle ? fileHandle.getFile() : null;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      return null;
     }
     throw error;
   }
@@ -2401,6 +2460,73 @@ async function createAnnualExcelSheetTargets(workbook, workbookDoc, workbookRels
   });
 
   return generatedTargets;
+}
+
+function createExcelRestoreWorksheetXml(restorePayload) {
+  const worksheetDoc = parseXmlDocument(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    + `<worksheet xmlns="${EXCEL_SHEET_NAMESPACE}"><sheetData></sheetData></worksheet>`
+  );
+  const worksheetContext = buildWorksheetContext(worksheetDoc);
+  const serializedPayload = JSON.stringify(restorePayload);
+  const chunks = [];
+
+  for (let offset = 0; offset < serializedPayload.length;) {
+    let endOffset = Math.min(offset + EXCEL_RESTORE_CHUNK_SIZE, serializedPayload.length);
+    if (endOffset < serializedPayload.length) {
+      const lastCodeUnit = serializedPayload.charCodeAt(endOffset - 1);
+      if (lastCodeUnit >= 0xD800 && lastCodeUnit <= 0xDBFF) {
+        endOffset -= 1;
+      }
+    }
+    chunks.push(serializedPayload.slice(offset, endOffset));
+    offset = endOffset;
+  }
+
+  setWorksheetCellText(worksheetContext, "A1", EXCEL_RESTORE_SCHEMA);
+  setWorksheetCellText(worksheetContext, "A2", String(EXCEL_RESTORE_SCHEMA_VERSION));
+  setWorksheetCellText(worksheetContext, "A3", String(chunks.length));
+  chunks.forEach((chunk, index) => {
+    setWorksheetCellText(worksheetContext, `A${index + 4}`, chunk);
+  });
+
+  return serializeXmlDocument(worksheetDoc);
+}
+
+function addExcelRestoreWorksheet(workbook, workbookDoc, workbookRelsDoc, contentTypesDoc, restorePayload) {
+  const sheetsRoot = workbookDoc.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "sheets")[0];
+  if (!sheetsRoot) {
+    throw new Error("復元データシートを追加するためのシート一覧を取得できません");
+  }
+
+  const sheetNumber = getNextNumericSuffix(workbook, /^xl\/worksheets\/sheet(\d+)\.xml$/);
+  const sheetFilePath = `xl/worksheets/sheet${sheetNumber}.xml`;
+  const nextRelationshipNumber = getWorkbookRelationshipNodes(workbookRelsDoc)
+    .reduce((max, node) => Math.max(max, Number((node.getAttribute("Id") || "").replace(/^rId/, "")) || 0), 0) + 1;
+  const relationshipId = `rId${nextRelationshipNumber}`;
+  const existingSheetIds = Array.from(workbookDoc.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "sheet"))
+    .map((sheet) => Number(sheet.getAttribute("sheetId")) || 0);
+  const sheetId = (existingSheetIds.length ? Math.max(...existingSheetIds) : 0) + 1;
+
+  workbook.file(sheetFilePath, createExcelRestoreWorksheetXml(restorePayload));
+  ensureContentTypeOverride(
+    contentTypesDoc,
+    sheetFilePath,
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"
+  );
+
+  const relationshipNode = workbookRelsDoc.createElementNS(PACKAGE_RELATIONSHIP_NAMESPACE, "Relationship");
+  relationshipNode.setAttribute("Id", relationshipId);
+  relationshipNode.setAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet");
+  relationshipNode.setAttribute("Target", sheetFilePath.replace(/^xl\//, ""));
+  workbookRelsDoc.documentElement.append(relationshipNode);
+
+  const sheetNode = workbookDoc.createElementNS(EXCEL_SHEET_NAMESPACE, "sheet");
+  sheetNode.setAttribute("name", EXCEL_RESTORE_SHEET_NAME);
+  sheetNode.setAttribute("sheetId", String(sheetId));
+  sheetNode.setAttribute("state", "veryHidden");
+  sheetNode.setAttributeNS(EXCEL_RELATIONSHIP_NAMESPACE, "r:id", relationshipId);
+  sheetsRoot.append(sheetNode);
 }
 
 function getElementChildren(parentNode, localName) {
@@ -3014,6 +3140,7 @@ function createEmptyExcelRecordState() {
     operationManager: "",
     maintenanceManager: "",
     maintenanceBottomByDay: {},
+    maintenanceRecordsByDay: {},
     holidayDays: []
   };
 }
@@ -3039,6 +3166,7 @@ function buildExcelRecordStateFromSource(source = {}, year, month) {
     operationManager: source.operationManager || "",
     maintenanceManager: source.maintenanceManager || "",
     maintenanceBottomByDay: sanitizeBottomStampsByDay(source.maintenanceBottomByDay || {}, year, month),
+    maintenanceRecordsByDay: getMaintenanceRecordsByDayFromSource(source),
     holidayDays
   };
 }
@@ -3050,6 +3178,7 @@ function buildCurrentExcelRecordState(year, month) {
     operationManager: state.operationManager || "",
     maintenanceManager: state.maintenanceManager || "",
     maintenanceBottomByDay: sanitizeBottomStampsByDay(state.maintenanceBottomByDay || {}, year, month),
+    maintenanceRecordsByDay: sanitizeMaintenanceRecordsByDay(state.maintenanceRecordsByDay),
     holidayDays: mergeHolidayDays(state.holidayDays, state.checks)
       .filter((day) => day >= 1 && day <= getDaysInMonth(year, month))
   };
@@ -3073,12 +3202,43 @@ async function buildFiscalYearExcelRecords(vehicle, driver, selectedMonthKey) {
     return {
       ...entry,
       recordState: record
-        ? buildExcelRecordStateFromSource(record.data, entry.year, entry.month)
+        ? {
+            ...buildExcelRecordStateFromSource(record.data, entry.year, entry.month),
+            loadedDocId: record.id
+          }
         : createEmptyExcelRecordState()
     };
   }));
 
   return records;
+}
+
+function buildExcelRestorePayload(fiscalYearRecords, vehicle, driverIdentity) {
+  return {
+    schema: EXCEL_RESTORE_SCHEMA,
+    schemaVersion: EXCEL_RESTORE_SCHEMA_VERSION,
+    createdAt: new Date().toISOString(),
+    fiscalYearStart: fiscalYearRecords[0]?.fiscalYearStart || getCurrentFiscalYearStart(),
+    vehicle: normalizeVehicleValue(vehicle),
+    driver: {
+      storageValue: driverIdentity.storageValue,
+      displayValue: driverIdentity.displayValue,
+      aliases: driverIdentity.aliases,
+      normalizedKey: driverIdentity.normalizedKey
+    },
+    months: fiscalYearRecords.map((entry) => {
+      const recordState = cloneRecordState(entry.recordState, entry.monthKey);
+      return {
+        month: entry.monthKey,
+        checks: recordState.checks,
+        operationManager: recordState.operationManager,
+        maintenanceManager: recordState.maintenanceManager,
+        maintenanceBottomByDay: recordState.maintenanceBottomByDay,
+        maintenanceRecordsByDay: recordState.maintenanceRecordsByDay,
+        holidayDays: recordState.holidayDays
+      };
+    })
+  };
 }
 
 async function downloadExcel(options = {}) {
@@ -3158,6 +3318,14 @@ async function downloadExcel(options = {}) {
     workbook.file(sheetTarget.path, serializeXmlDocument(worksheetDoc));
   }
 
+  addExcelRestoreWorksheet(
+    workbook,
+    workbookDoc,
+    workbookRelsDoc,
+    contentTypesDoc,
+    buildExcelRestorePayload(fiscalYearRecords, vehicle, driverIdentity)
+  );
+
   workbook.file("[Content_Types].xml", serializeXmlDocument(contentTypesDoc));
   if (sharedStringsDoc) {
     normalizeExcelInspectionLabels(sharedStringsDoc);
@@ -3179,6 +3347,225 @@ async function downloadExcel(options = {}) {
       ? `${statusLabel}ファイルを選択した場所に保存しました`
       : `${statusLabel}ファイルをダウンロードしました`
   );
+}
+
+function getWorksheetCellText(worksheetDoc, cellRef) {
+  const cell = Array.from(worksheetDoc.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "c"))
+    .find((candidate) => candidate.getAttribute("r") === cellRef);
+  if (!cell) {
+    return "";
+  }
+
+  return Array.from(cell.getElementsByTagNameNS(EXCEL_SHEET_NAMESPACE, "t"))
+    .map((textNode) => textNode.textContent || "")
+    .join("");
+}
+
+async function readExcelRestorePayload(workbook) {
+  const workbookFile = workbook.file("xl/workbook.xml");
+  const workbookRelsFile = workbook.file("xl/_rels/workbook.xml.rels");
+  if (!workbookFile || !workbookRelsFile) {
+    throw new Error("スプレッドシートの構成を確認できません");
+  }
+
+  const workbookDoc = parseXmlDocument(await workbookFile.async("string"));
+  const workbookRelsDoc = parseXmlDocument(await workbookRelsFile.async("string"));
+  const restoreSheetTarget = getWorkbookSheetTarget(workbookDoc, workbookRelsDoc, EXCEL_RESTORE_SHEET_NAME);
+  if (!restoreSheetTarget) {
+    throw new Error("このファイルには復元データがありません。機能追加後に保存したスプレッドシートを選択してください");
+  }
+
+  const restoreSheetFile = workbook.file(restoreSheetTarget.path);
+  if (!restoreSheetFile) {
+    throw new Error("復元データシートを読み込めません");
+  }
+
+  const restoreSheetDoc = parseXmlDocument(await restoreSheetFile.async("string"));
+  if (getWorksheetCellText(restoreSheetDoc, "A1") !== EXCEL_RESTORE_SCHEMA) {
+    throw new Error("復元データの形式が一致しません");
+  }
+
+  const schemaVersion = Number(getWorksheetCellText(restoreSheetDoc, "A2"));
+  if (schemaVersion !== EXCEL_RESTORE_SCHEMA_VERSION) {
+    throw new Error(`対応していない復元データのバージョンです: ${schemaVersion || "不明"}`);
+  }
+
+  const chunkCount = Number(getWorksheetCellText(restoreSheetDoc, "A3"));
+  if (!Number.isInteger(chunkCount) || chunkCount < 1 || chunkCount > 1000) {
+    throw new Error("復元データの分割情報が正しくありません");
+  }
+
+  let serializedPayload = "";
+  for (let index = 0; index < chunkCount; index += 1) {
+    const chunk = getWorksheetCellText(restoreSheetDoc, `A${index + 4}`);
+    if (!chunk) {
+      throw new Error("復元データの一部が見つかりません");
+    }
+    serializedPayload += chunk;
+  }
+
+  try {
+    return JSON.parse(serializedPayload);
+  } catch {
+    throw new Error("復元データを解析できません");
+  }
+}
+
+function sanitizeExcelRestoreChecks(checks, year, month) {
+  const daysInMonth = getDaysInMonth(year, month);
+  return Object.fromEntries(
+    Object.entries(checks && typeof checks === "object" ? checks : {}).filter(([key, value]) => {
+      const match = /^(\d+)_(\d+)$/.exec(key);
+      if (!match) {
+        return false;
+      }
+      const rowIndex = Number(match[1]);
+      const day = Number(match[2]);
+      return rowIndex >= 0
+        && rowIndex < getInspectionItemCount()
+        && day >= 1
+        && day <= daysInMonth
+        && ((value !== "" && CHECK_STATES.includes(value)) || value === HOLIDAY_MARK);
+    })
+  );
+}
+
+function sanitizeExcelRestoreMonth(rawMonth, expectedMonthKey) {
+  const { year, month } = parseYearMonthKey(expectedMonthKey);
+  const daysInMonth = getDaysInMonth(year, month);
+  const checks = sanitizeExcelRestoreChecks(rawMonth?.checks, year, month);
+  const holidayDays = mergeHolidayDays(
+    Array.isArray(rawMonth?.holidayDays) ? rawMonth.holidayDays : [],
+    checks,
+    daysInMonth
+  ).filter((day) => day >= 1 && day <= daysInMonth);
+
+  return cloneRecordState({
+    month: expectedMonthKey,
+    checks,
+    operationManager: typeof rawMonth?.operationManager === "string" ? rawMonth.operationManager : "",
+    maintenanceManager: typeof rawMonth?.maintenanceManager === "string" ? rawMonth.maintenanceManager : "",
+    maintenanceBottomByDay: sanitizeBottomStampsByDay(rawMonth?.maintenanceBottomByDay || {}, year, month),
+    maintenanceRecordsByDay: Object.fromEntries(
+      Object.entries(sanitizeMaintenanceRecordsByDay(rawMonth?.maintenanceRecordsByDay || {}))
+        .filter(([dayText]) => {
+          const day = Number(dayText);
+          return day >= 1 && day <= daysInMonth;
+        })
+    ),
+    holidayDays,
+    loadedDocId: null
+  }, expectedMonthKey);
+}
+
+function validateExcelRestorePayload(payload) {
+  if (!payload || payload.schema !== EXCEL_RESTORE_SCHEMA || payload.schemaVersion !== EXCEL_RESTORE_SCHEMA_VERSION) {
+    throw new Error("復元データの形式が一致しません");
+  }
+
+  const fiscalYearStart = Number(payload.fiscalYearStart);
+  if (!Number.isInteger(fiscalYearStart) || fiscalYearStart < 2000 || fiscalYearStart > 2100) {
+    throw new Error("対象年度が正しくありません");
+  }
+
+  const vehicle = normalizeVehicleValue(payload.vehicle);
+  const driverStorageValue = normalizeOptionValue(payload.driver?.storageValue);
+  const driverDisplayValue = normalizeDriverDisplayName(payload.driver?.displayValue || driverStorageValue);
+  if (!vehicle || !driverStorageValue || !driverDisplayValue) {
+    throw new Error("車番または運転者を確認できません");
+  }
+
+  const fiscalEntries = getMonthEntriesForFiscalYearStart(fiscalYearStart);
+  const rawMonths = Array.isArray(payload.months) ? payload.months : [];
+  const rawMonthMap = new Map();
+  rawMonths.forEach((rawMonth) => {
+    const monthKey = String(rawMonth?.month || "");
+    if (rawMonthMap.has(monthKey)) {
+      throw new Error(`同じ月の復元データが重複しています: ${monthKey}`);
+    }
+    rawMonthMap.set(monthKey, rawMonth);
+  });
+
+  if (rawMonths.length !== fiscalEntries.length || fiscalEntries.some((entry) => !rawMonthMap.has(entry.monthKey))) {
+    throw new Error("年度12か月分の復元データがそろっていません");
+  }
+
+  return {
+    fiscalYearStart,
+    vehicle,
+    driverStorageValue,
+    driverDisplayValue,
+    recordsByMonth: Object.fromEntries(
+      fiscalEntries.map((entry) => [
+        entry.monthKey,
+        sanitizeExcelRestoreMonth(rawMonthMap.get(entry.monthKey), entry.monthKey)
+      ])
+    )
+  };
+}
+
+function ensureFiscalYearOption(fiscalYearStart) {
+  const yearText = String(fiscalYearStart);
+  if (Array.from(monthEl.options).some((option) => option.value === yearText)) {
+    return;
+  }
+
+  const optionEl = document.createElement("option");
+  optionEl.value = yearText;
+  optionEl.textContent = `${yearText}年度`;
+  monthEl.append(optionEl);
+}
+
+function applyExcelRestorePayload(restoredData) {
+  const fiscalEntries = getMonthEntriesForFiscalYearStart(restoredData.fiscalYearStart);
+  const firstMonthKey = fiscalEntries[0].monthKey;
+  const initialMonthKey = fiscalEntries.find((entry) => monthRecordHasContent(restoredData.recordsByMonth[entry.monthKey]))?.monthKey
+    || firstMonthKey;
+
+  ensureFiscalYearOption(restoredData.fiscalYearStart);
+  setMonthInputValue(firstMonthKey);
+  rememberDriverStorageValue(restoredData.driverStorageValue);
+  ensureSelectValue(vehicleEl, restoredData.vehicle, normalizeVehicleValue);
+  ensureSelectValue(driverEl, restoredData.driverDisplayValue, normalizeDriverDisplayName);
+
+  state.activeFiscalYearStart = restoredData.fiscalYearStart;
+  state.restoredFromSpreadsheet = true;
+  state.recordsByMonth = restoredData.recordsByMonth;
+  applyMonthRecordState(initialMonthKey, restoredData.recordsByMonth[initialMonthKey]);
+  syncHeaderInfo();
+  renderMonthTabs();
+  renderDays();
+  renderBody();
+  renderBottomStampRow();
+  setStamp("operationManager", state.operationManager);
+  setStamp("maintenanceManager", state.maintenanceManager);
+  syncToolbarWidth();
+}
+
+async function restoreExcel() {
+  const file = await selectExcelRestoreFile();
+  if (!file) {
+    setStatus("スプレッドシート復元をキャンセルしました");
+    return;
+  }
+
+  setStatus("スプレッドシートの復元データを確認しています...");
+  const JSZip = await getJsZipModule();
+  const workbook = await JSZip.loadAsync(await file.arrayBuffer());
+  const restoredData = validateExcelRestorePayload(await readExcelRestorePayload(workbook));
+  const accepted = await confirmInPage(
+    `${restoredData.fiscalYearStart}年度\n`
+    + `車番: ${restoredData.vehicle}\n`
+    + `運転者: ${restoredData.driverDisplayValue}\n\n`
+    + "このスプレッドシートを年度表へ復元しますか？\n現在の表は復元データに置き換わります。"
+  );
+  if (!accepted) {
+    setStatus("スプレッドシート復元をキャンセルしました");
+    return;
+  }
+
+  applyExcelRestorePayload(restoredData);
+  setStatus("スプレッドシートから12か月分を復元しました。確認後に保存してください。");
 }
 
 function buildCsvRows() {
@@ -3648,6 +4035,7 @@ async function loadRecord() {
   }
 
   const loadedRecordsByMonth = await loadFiscalYearRecordStates(vehicle, driver, month);
+  state.restoredFromSpreadsheet = false;
   state.recordsByMonth = loadedRecordsByMonth;
   const hasAnyLoadedMonth = Object.values(loadedRecordsByMonth).some((recordState) => monthRecordHasContent(recordState));
   const initialMonth = monthRecordHasContent(loadedRecordsByMonth[month])
@@ -3736,8 +4124,11 @@ async function saveRecord() {
   for (const entry of fiscalEntries) {
     const monthState = state.recordsByMonth[entry.monthKey] || createEmptyMonthRecordState(entry.monthKey);
     if (!monthRecordHasContent(monthState)) {
-      if (monthState.loadedDocId) {
-        await deleteMonthRecord(monthState.loadedDocId);
+      const existingRecord = monthState.loadedDocId
+        ? { id: monthState.loadedDocId }
+        : (state.restoredFromSpreadsheet ? await findRecord(entry.monthKey, vehicle, driver) : null);
+      if (existingRecord?.id) {
+        await deleteMonthRecord(existingRecord.id);
         state.recordsByMonth[entry.monthKey] = createEmptyMonthRecordState(entry.monthKey);
         deletedCount += 1;
       }
@@ -3751,6 +4142,7 @@ async function saveRecord() {
     savedCount += 1;
   }
 
+  state.restoredFromSpreadsheet = false;
   applyMonthRecordState(state.activeMonthKey, getRecordStateForMonth(state.activeMonthKey));
   setStatus(
     savedCount || deletedCount
@@ -3816,6 +4208,12 @@ document.getElementById("maintenanceManagerSlot").addEventListener("click", hand
 exportExcelBtnEl.addEventListener("click", () => {
   downloadExcel().catch((error) => {
     setStatus(`スプレッドシート保存失敗: ${error.message}`, true);
+  });
+});
+
+restoreExcelBtnEl.addEventListener("click", () => {
+  restoreExcel().catch((error) => {
+    setStatus(`スプレッドシート復元失敗: ${error.message}`, true);
   });
 });
 
