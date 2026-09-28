@@ -1,4 +1,4 @@
-const CACHE_NAME = "sinyuubuturyuu-launcher-v28";
+const CACHE_NAME = "sinyuubuturyuu-launcher-v29";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -8,7 +8,7 @@ const APP_SHELL = [
   "./getujitiretenkenhyou/firebase/firebase-config.js?v=20260727a",
   "./auth/firebase-auth.js?v=20260727a",
   "./getujitiretenkenhyou/firebase/firebase-cloud-sync.js?v=20260727a",
-  "./driver-points/driver-points.js?v=20260727a",
+  "./driver-points/driver-points.js?v=20260928a",
   "./manifest.webmanifest",
   "./sinyuubuturyuu-icon.png",
   "./apple-touch-icon.png",

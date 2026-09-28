@@ -1,19 +1,19 @@
-const APP_VERSION = "20260801a";
+const APP_VERSION = "20260928a";
 const CACHE_NAME = `monthly-inspection-shell-${APP_VERSION}`;
 const APP_SHELL = [
   "./",
   `./index.html?v=${APP_VERSION}`,
-  `./styles.css?v=${APP_VERSION}`,
-  `./app.js?v=${APP_VERSION}`,
-  `./firebase-config.js?v=${APP_VERSION}`,
-  "../driver-points/driver-points.js?v=20260727a",
-  `./manifest.webmanifest?v=${APP_VERSION}`,
+  "./styles.css?v=20260315-19",
+  "./app.js?v=20260801a",
+  "./firebase-config.js?v=20260727a",
+  "../driver-points/driver-points.js?v=20260928a",
+  "./manifest.webmanifest?v=20260315-19",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/icon-512-maskable.png",
   "./icons/apple-touch-icon.png",
   "./icons/send-farewell.png?v=20260315-20",
-  `./icons/send-farewell-02.png?v=${APP_VERSION}`
+  "./icons/send-farewell-02.png?v=20260801a"
 ];
 const APP_SHELL_URLS = new Set(APP_SHELL.map((path) => new URL(path, self.location.href).href));
 
