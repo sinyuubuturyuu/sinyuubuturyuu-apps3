@@ -17,6 +17,7 @@
   ].join("\n");
   const STORAGE_TARGET = Object.freeze({
     collection: "driver-points",
+    totalCollection: "driver-point-totals",
     summaryPrefix: "driver_points_summary",
     eventPrefix: "driver_points_event"
   });
@@ -181,6 +182,16 @@
 
   function buildEventDocId(eventId) {
     return `${STORAGE_TARGET.eventPrefix}_${hashText(eventId)}`;
+  }
+
+  function buildDriverTotalDocId(driverKey) {
+    return `driver_points_total_${encodeURIComponent(driverKey)}`;
+  }
+
+  function matchesDriverTotalIdentity(data, driverKey) {
+    return data.driverKey
+      ? data.driverKey === driverKey
+      : buildDriverKey(data.driverName) === driverKey;
   }
 
   function getLastAwardAtMs() {
@@ -511,6 +522,75 @@
     return runtimeState.promise;
   }
 
+  async function initializeDriverTotal(runtime, identity, totalRef) {
+    const firestore = runtime.firestoreModule;
+    const pointCollection = firestore.collection(runtime.db, STORAGE_TARGET.collection);
+    const readQuery = firestore.getDocsFromServer || firestore.getDocs;
+    const snapshots = await Promise.all([
+      readQuery(firestore.query(pointCollection, firestore.where("driverKey", "==", identity.driverKey))),
+      readQuery(firestore.query(pointCollection, firestore.where("driverName", "==", identity.driverName)))
+    ]);
+    const summaryRefs = new Map();
+    const summaryIdByVehicle = new Map();
+    snapshots.forEach((snapshot) => snapshot.docs.forEach((entry) => {
+      const data = entry.data() || {};
+      if ((data.kind === "driver_points_summary" || entry.id.startsWith("driver_points_summary_"))
+        && matchesDriverTotalIdentity(data, identity.driverKey)) {
+        const vehicleKey = buildVehicleKey(data.vehicleKey || data.vehicleNumber);
+        if (!vehicleKey || (summaryIdByVehicle.has(vehicleKey) && summaryIdByVehicle.get(vehicleKey) !== entry.id)) {
+          throw new Error("driver_total_duplicate_vehicle_summary");
+        }
+        summaryIdByVehicle.set(vehicleKey, entry.id);
+        summaryRefs.set(entry.id, entry.ref);
+      }
+    }));
+
+    return firestore.runTransaction(runtime.db, async (transaction) => {
+      const totalSnapshot = await transaction.get(totalRef);
+      const current = totalSnapshot.exists() ? totalSnapshot.data() || {} : {};
+      if (current.driverKey && current.driverKey !== identity.driverKey) {
+        throw new Error("driver_total_identity_mismatch");
+      }
+      if (current.initialized === true) {
+        const totalPoints = Number(current.totalPoints);
+        if (!Number.isSafeInteger(totalPoints)) {
+          throw new Error("driver_total_invalid_points");
+        }
+        return totalPoints;
+      }
+      const vehicleTotals = { ...(current.vehicleTotals || {}) };
+      Object.keys(vehicleTotals).forEach((id) => {
+        if (id.startsWith("driver_points_summary_")) {
+          summaryRefs.set(id, firestore.doc(runtime.db, STORAGE_TARGET.collection, id));
+        }
+      });
+      for (const [id, ref] of summaryRefs) {
+        const snapshot = await transaction.get(ref);
+        const data = snapshot.exists() ? snapshot.data() || {} : {};
+        const points = snapshot.exists() && matchesDriverTotalIdentity(data, identity.driverKey)
+          ? Number(data.totalPoints || 0) : 0;
+        if (!Number.isSafeInteger(points)) {
+          throw new Error("driver_total_invalid_points");
+        }
+        vehicleTotals[id] = points;
+      }
+      const totalPoints = Object.values(vehicleTotals).reduce((sum, points) => sum + Number(points || 0), 0);
+      if (!Number.isSafeInteger(totalPoints)) {
+        throw new Error("driver_total_invalid_points");
+      }
+      transaction.set(totalRef, {
+        kind: "driver_points_total",
+        driverKey: identity.driverKey,
+        driverName: identity.driverName,
+        totalPoints,
+        vehicleTotals,
+        initialized: true,
+        updatedAt: firestore.serverTimestamp()
+      }, { merge: true });
+      return totalPoints;
+    });
+  }
+
   async function readDriverPoints(driverName, vehicleNumber, options = {}) {
     const identity = buildSelectionIdentity(driverName, vehicleNumber);
     if (!identity.driverKey || !identity.vehicleKey) {
@@ -529,25 +609,34 @@
 
     const runtime = await ensureRuntime();
     const { doc, getDoc, getDocFromServer } = runtime.firestoreModule;
-    const summaryRef = doc(runtime.db, STORAGE_TARGET.collection, buildSummaryDocId(identity));
+    const totalRef = doc(runtime.db, STORAGE_TARGET.totalCollection, buildDriverTotalDocId(identity.driverKey));
     let snapshot;
     if (options.force === true && typeof getDocFromServer === "function") {
       try {
-        snapshot = await getDocFromServer(summaryRef);
+        snapshot = await getDocFromServer(totalRef);
       } catch {
-        snapshot = await getDoc(summaryRef);
+        snapshot = await getDoc(totalRef);
       }
     } else {
-      snapshot = await getDoc(summaryRef);
+      snapshot = await getDoc(totalRef);
     }
 
     const data = snapshot.exists() ? snapshot.data() : {};
+    if (data.driverKey && data.driverKey !== identity.driverKey) {
+      throw new Error("driver_total_identity_mismatch");
+    }
+    const totalPoints = data.initialized === true
+      ? Number(data.totalPoints)
+      : await initializeDriverTotal(runtime, identity, totalRef);
+    if (!Number.isSafeInteger(totalPoints)) {
+      throw new Error("driver_total_invalid_points");
+    }
     const summary = {
       ok: true,
       enabled: true,
       driverName: identity.driverName,
       vehicleNumber: identity.vehicleNumber,
-      points: Number(data.totalPoints || 0)
+      points: totalPoints
     };
     setCachedSummary(identity, summary);
     return summary;
@@ -573,6 +662,7 @@
     const runtime = await ensureRuntime();
     const { doc, increment, runTransaction, serverTimestamp } = runtime.firestoreModule;
     const pointRef = doc(runtime.db, STORAGE_TARGET.collection, buildSummaryDocId(identity));
+    const totalRef = doc(runtime.db, STORAGE_TARGET.totalCollection, buildDriverTotalDocId(identity.driverKey));
     const eventEntries = awards.map((award) => ({
       award,
       ref: doc(runtime.db, STORAGE_TARGET.collection, buildEventDocId(award.eventId))
@@ -586,6 +676,10 @@
 
     await runTransaction(runtime.db, async (transaction) => {
       const snapshots = await Promise.all(eventEntries.map((entry) => transaction.get(entry.ref)));
+      const totalSnapshot = await transaction.get(totalRef);
+      if (totalSnapshot.exists() && totalSnapshot.data().driverKey !== identity.driverKey) {
+        throw new Error("driver_total_identity_mismatch");
+      }
       const nextAwards = [];
       snapshots.forEach((snapshot, index) => {
         if (!snapshot.exists()) {
@@ -617,6 +711,14 @@
         pointUpdate.monthlyTirePoints = increment(addedPoints);
       }
       transaction.set(pointRef, pointUpdate, { merge: true });
+      transaction.set(totalRef, {
+        kind: "driver_points_total",
+        driverKey: identity.driverKey,
+        driverName: identity.driverName,
+        totalPoints: increment(addedPoints),
+        vehicleTotals: { [pointRef.id]: increment(addedPoints) },
+        updatedAt: serverTimestamp()
+      }, { merge: true });
 
       nextAwards.forEach((award) => {
         const eventRef = eventEntries.find((entry) => entry.award.eventId === award.eventId).ref;
@@ -1071,7 +1173,7 @@
         return;
       }
       elements.badge.textContent = `${summary.points}pt`;
-      elements.badge.title = `${summary.vehicleNumber} / ${summary.driverName} のポイント`;
+      elements.badge.title = `${summary.driverName} の全車番の合計ポイント`;
       uiState.lastBadgeSyncAt = Date.now();
     } catch (error) {
       if (!isExpectedReadBlock(error)) {

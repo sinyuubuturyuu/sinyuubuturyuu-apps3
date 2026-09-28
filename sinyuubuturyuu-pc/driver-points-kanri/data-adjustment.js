@@ -16,6 +16,7 @@
   const TIRE_SOURCE = "monthlyTireInspection";
   const MANUAL_SOURCE = "manualAdjustment";
   const MANUAL_EVENT_PREFIX = "driver_points_event_manual_";
+  const TOTAL_COLLECTION = "driver-point-totals";
 
   const optionsDocRefs = Object.freeze({
     vehicles: {
@@ -465,6 +466,7 @@
         }
 
         transaction.set(summaryRef, summaryPayload, { merge: true });
+        writeDriverTotalChange(transaction, review, summaryRef, currentPoints, currentPoints + review.points, FieldValue);
         transaction.set(eventRef, {
           kind: EVENT_KIND,
           driverKey: identity.driverKey,
@@ -747,15 +749,15 @@
   async function loadPointRecords(schema, vehicle, driverOption) {
     const collectionRef = state.pointsDb.collection(schema.collectionName);
     const identity = buildSelectionIdentity(driverOption.label, vehicle);
-    let snapshot = await getServerQuerySnapshot(
-      collectionRef.where("driverKey", "==", identity.driverKey).limit(1000)
-    );
-    if (snapshot.empty && identity.driverName) {
-      snapshot = await getServerQuerySnapshot(
-        collectionRef.where("driverName", "==", identity.driverName).limit(1000)
-      );
+    const queries = [collectionRef.where("driverKey", "==", identity.driverKey)];
+    if (identity.driverName) {
+      queries.push(collectionRef.where("driverName", "==", identity.driverName));
     }
-    return snapshot.docs.map(toRecord).filter(function (record) {
+    const snapshots = await Promise.all(queries.map(getServerQuerySnapshot));
+    const records = uniqueRecords(snapshots.flatMap(function (snapshot) {
+      return snapshot.docs.map(toRecord);
+    }));
+    return records.filter(function (record) {
       return recordMatchesSelection(record, schema, vehicle, driverOption);
     });
   }
@@ -1406,31 +1408,39 @@
       if (review.targetType === "manualPoints") {
         await executeManualPointDeletion(review, schema, summaryRef, FieldValue);
       } else {
-        const batch = state.pointsDb.batch();
-        const now = FieldValue.serverTimestamp();
-
-        review.deleteDailyDays.forEach(function (entry) {
-          batch.update(entry.record.ref, buildDailyDayDeletePayload(entry.day, FieldValue, now));
-        });
-        review.deleteTireRecords.forEach(function (record) {
-          batch.delete(record.ref);
-        });
-        review.deleteEventIds.forEach(function (eventId) {
-          const eventRecord = state.allEvents.find(function (record) {
-            return record.id === eventId;
-          });
-          if (eventRecord) {
-            batch.delete(eventRecord.ref);
+        await state.pointsDb.runTransaction(async function (transaction) {
+          const summarySnapshot = await transaction.get(summaryRef);
+          const summaryData = summarySnapshot.exists ? summarySnapshot.data() || {} : {};
+          const pointsFieldName = resolvePointsFieldName(summaryData, schema);
+          const currentPoints = summarySnapshot.exists ? getNumericValue(summaryData[pointsFieldName]) : 0;
+          if (currentPoints !== review.summaryBefore) {
+            throw new Error("point_summary_changed");
           }
+          const now = FieldValue.serverTimestamp();
+          review.deleteDailyDays.forEach(function (entry) {
+            transaction.update(entry.record.ref, buildDailyDayDeletePayload(entry.day, FieldValue, now));
+          });
+          review.deleteTireRecords.forEach(function (record) {
+            transaction.delete(record.ref);
+          });
+          review.deleteEventIds.forEach(function (eventId) {
+            const eventRecord = state.allEvents.find(function (record) {
+              return record.id === eventId;
+            });
+            if (eventRecord) {
+              transaction.delete(eventRecord.ref);
+            }
+          });
+          if (review.deleteSummaryAfter) {
+            transaction.delete(summaryRef);
+          } else if (!review.skipSummaryUpdate) {
+            transaction.set(summaryRef, review.summaryPayload, { merge: true });
+          }
+          if (!review.skipSummaryUpdate || review.deleteSummaryAfter) {
+            writeDriverTotalChange(transaction, review, summaryRef, currentPoints, review.summaryAfter, FieldValue);
+          }
+          transaction.set(state.pointsDb.collection(LOG_COLLECTION).doc(), buildLogPayload(review, FieldValue));
         });
-        if (review.deleteSummaryAfter) {
-          batch.delete(summaryRef);
-        } else if (!review.skipSummaryUpdate) {
-          batch.set(summaryRef, review.summaryPayload, { merge: true });
-        }
-        batch.set(state.pointsDb.collection(LOG_COLLECTION).doc(), buildLogPayload(review, FieldValue));
-
-        await batch.commit();
       }
 
       state.review = null;
@@ -1517,6 +1527,7 @@
       };
       summaryPayload[pointsFieldName] = nextPoints;
       transaction.set(summaryRef, summaryPayload, { merge: true });
+      writeDriverTotalChange(transaction, review, summaryRef, currentPoints, nextPoints, FieldValue);
 
       const logPayload = buildLogPayload(review, FieldValue);
       logPayload.summaryBefore = currentPoints;
@@ -2059,6 +2070,23 @@
 
   function buildSummaryDocId(identity) {
     return "driver_points_summary_" + identity.idSuffix;
+  }
+
+  function writeDriverTotalChange(writer, review, summaryRef, beforePoints, afterPoints, FieldValue) {
+    const identity = buildSelectionIdentity(review.driverOption ? review.driverOption.label : "", review.vehicle);
+    if (!identity.driverKey) {
+      throw new Error("driver_total_identity_missing");
+    }
+    const totalRef = state.pointsDb.collection(TOTAL_COLLECTION)
+      .doc("driver_points_total_" + encodeURIComponent(identity.driverKey));
+    writer.set(totalRef, {
+      kind: "driver_points_total",
+      driverKey: identity.driverKey,
+      driverName: identity.driverName,
+      totalPoints: FieldValue.increment(afterPoints - beforePoints),
+      vehicleTotals: { [summaryRef.id]: afterPoints },
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
   }
 
   function hashText(value) {
